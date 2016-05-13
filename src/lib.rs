@@ -6,6 +6,7 @@
 //! if it doesn't look like a mangled symbol name.
 
 #![no_std]
+#![deny(missing_docs)]
 
 #[cfg(test)]
 #[macro_use]
