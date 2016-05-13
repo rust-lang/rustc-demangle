@@ -4,6 +4,16 @@
 //! sentinel value that can be used to learn about the demangled version of a
 //! symbol name. The demangled representation will be the same as the original
 //! if it doesn't look like a mangled symbol name.
+//!
+//! # Examples
+//!
+//! ```
+//! use rustc_demangle::demangle;
+//!
+//! assert_eq!(demangle("_ZN4testE").to_string(), "test");
+//! assert_eq!(demangle("_ZN3foo3barE").to_string(), "foo::bar");
+//! assert_eq!(demangle("foo").to_string(), "foo");
+//! ```
 
 #![no_std]
 #![deny(missing_docs)]
@@ -32,6 +42,16 @@ pub struct Demangle<'a> {
 /// `Symbol` which is in turn resolved from a `Frame`) and then writes the
 /// de-mangled version into the given `writer`. If the symbol does not look like
 /// a mangled symbol, it is still written to `writer`.
+///
+/// # Examples
+///
+/// ```
+/// use rustc_demangle::demangle;
+///
+/// assert_eq!(demangle("_ZN4testE").to_string(), "test");
+/// assert_eq!(demangle("_ZN3foo3barE").to_string(), "foo::bar");
+/// assert_eq!(demangle("foo").to_string(), "foo");
+/// ```
 
 // All rust symbols are in theory lists of "::"-separated identifiers. Some
 // assemblers, however, can't handle these characters in symbol names. To get
@@ -41,7 +61,7 @@ pub struct Demangle<'a> {
 // 2. For each element of the path, emit the length plus the element
 // 3. End the path with "E"
 //
-// For example, "_ZN4testE" => "test" and "_ZN3foo3bar" => "foo::bar".
+// For example, "_ZN4testE" => "test" and "_ZN3foo3barE" => "foo::bar".
 //
 // We're the ones printing our backtraces, so we can't rely on anything else to
 // demangle our symbols. It's *much* nicer to look at demangled symbols, so
