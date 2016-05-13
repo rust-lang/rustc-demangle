@@ -12,9 +12,9 @@ script:
   - cargo doc
 after_success:
   - travis-cargo --only nightly doc-upload
-env:
-  global:
-    secure: tnY9uOzb+59QyxPwOkj64dYLhytJGEXCo3uMvlbFtBpNJ6B2bN+lFDLaILbki1xkIg6DOFLGGT0+2qLI295V8BgEOqs/bU1WNNTjCdIqhbYI+HrwPP2RocecIXCIrsmL7tVSqfdLnU8RCoS0CBvJOwX/f813UGn3yAP4k5l7K/U=
 notifications:
   email:
     on_success: never
+env:
+  global:
+    secure: ddqHcsr1HiftlyMaLGJAvxFT+CT6uoDeBEwTeN7DrHsLTSfvXnQ/KsBJv+iTGcbwvD6IwiX3BAUsHrwlwKhUEbUuvVsABHstehRC5kLxdMgavkZWUaa5z+inbAi8etEsb352eI06oIuGiuy3QHFgBzngOOFAJOpOiPAb6r4CBSAdr2cpFAibvpZtibP6r/dHDvvGAtjbct9ZXkRiANO6etgYmsD+kwm9CDaDpLZE+YuNf6SZW4Hww34dpciTZXUBzv5tRKm3Oc6BbmFM3AJUd6XOq4ifk1xF+mmWUhp86K/ju2yvw/bPyNmk6xLtbuyZSglJWQCobT709jnPLi8umETRn8IK5Zo4E3hNY9fhKI3ByJlQr7Zd4tw9lzfPPjHPKJNsiKXMU1QOZmS/hfVb0e0oCMHLQTD8jyIqchEUMu60tMl3fRILm5iie6DfiW6yXOtSd+5kHiCnEvHVi5vnZrMcyXkvpHwnESppNKKGCwIiD+4V4DKJDj+Hsxt1rwZNvB7rqp3Oq75i5yk9X4Fw4trsmXpCu/hgiqBMQBuJ9NKMih/WEzDCsI1nxHcKHkR/d58zCMgfIeo9uKCBut1COun4qcj/pMDnh3oMEzFRjt9mg/O0mukCaWsMmsaqI7hBu8qszkseR4ykhmHoEMvw3PCr+l/y+yM+PJH8r49jMZw=
