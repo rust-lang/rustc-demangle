@@ -8,7 +8,7 @@ Symbol demangling for Rust
 
 # License
 
-`flate2-rs` is primarily distributed under the terms of both the MIT license and
+`rustc-demangle` is primarily distributed under the terms of both the MIT license and
 the Apache License (Version 2.0), with portions covered by various BSD-like
 licenses.
 
