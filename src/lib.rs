@@ -172,7 +172,9 @@ impl<'a> fmt::Display for Demangle<'a> {
                         "$u20$", => " ",
                         "$u27$", => "'",
                         "$u5b$", => "[",
-                        "$u5d$", => "]"
+                        "$u5d$", => "]",
+                        "$u7b$", => "{",
+                        "$u7d$", => "}"
                     }
                 } else {
                     let idx = rest.find('$').unwrap_or(rest.len());
