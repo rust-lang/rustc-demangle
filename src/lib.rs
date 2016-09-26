@@ -76,12 +76,12 @@ pub fn demangle(s: &str) -> Demangle {
     // symbols because we could have any function in the backtrace.
     let mut valid = true;
     let mut inner = s;
-    if s.len() > 4 && s.starts_with("_ZN") && s.ends_with("E") {
-        inner = &s[3 .. s.len() - 1];
-    // On Windows, dbghelp strips leading underscores, so we accept "ZN...E"
-    // form too.
-    } else if s.len() > 3 && s.starts_with("ZN") && s.ends_with("E") {
-        inner = &s[2 .. s.len() - 1];
+    if s.len() > 4 && s.starts_with("_ZN") && s.ends_with('E') {
+        inner = &s[3..s.len() - 1];
+    } else if s.len() > 3 && s.starts_with("ZN") && s.ends_with('E') {
+        // On Windows, dbghelp strips leading underscores, so we accept "ZN...E"
+        // form too.
+        inner = &s[2..s.len() - 1];
     } else {
         valid = false;
     }
@@ -94,19 +94,23 @@ pub fn demangle(s: &str) -> Demangle {
                 if c.is_digit(10) {
                     i = i * 10 + c as usize - '0' as usize;
                 } else {
-                    break
+                    break;
                 }
             }
             if i == 0 {
                 valid = chars.next().is_none();
-                break
+                break;
             } else if chars.by_ref().take(i - 1).count() != i - 1 {
                 valid = false;
             }
         }
     }
 
-    Demangle { inner: inner, valid: valid, original: s }
+    Demangle {
+        inner: inner,
+        valid: valid,
+        original: s,
+    }
 }
 
 impl<'a> Demangle<'a> {
@@ -138,10 +142,21 @@ impl<'a> fmt::Display for Demangle<'a> {
             let i: usize = inner[..(inner.len() - rest.len())].parse().unwrap();
             inner = &rest[i..];
             rest = &rest[..i];
+            if rest.starts_with("_$") {
+                rest = &rest[1..];
+            }
             while !rest.is_empty() {
-                if rest.starts_with("$") {
+                if rest.starts_with('.') {
+                    if let Some('.') = rest[1..].chars().next() {
+                        try!(f.write_str("::"));
+                        rest = &rest[2..];
+                    } else {
+                        try!(f.write_str("."));
+                        rest = &rest[1..];
+                    }
+                } else if rest.starts_with('$') {
                     macro_rules! demangle {
-                        ($($pat:expr, => $demangled:expr),*) => ({
+                        ($($pat:expr => $demangled:expr),*) => ({
                             $(if rest.starts_with($pat) {
                                 try!(f.write_str($demangled));
                                 rest = &rest[$pat.len()..];
@@ -154,30 +169,35 @@ impl<'a> fmt::Display for Demangle<'a> {
                         })
                     }
 
-                    // see src/librustc_trans/back/symbol_names.rs for these
-                    // mappings, historical ones also included.
+                    // see src/librustc/back/link.rs for these mappings
                     demangle! {
-                        "$SP$", => "@",
-                        "$BP$", => "*",
-                        "$RF$", => "&",
-                        "$LT$", => "<",
-                        "$GT$", => ">",
-                        "$LP$", => "(",
-                        "$RP$", => ")",
-                        "$C$", => ",",
+                        "$SP$" => "@",
+                        "$BP$" => "*",
+                        "$RF$" => "&",
+                        "$LT$" => "<",
+                        "$GT$" => ">",
+                        "$LP$" => "(",
+                        "$RP$" => ")",
+                        "$C$" => ",",
 
                         // in theory we can demangle any Unicode code point, but
                         // for simplicity we just catch the common ones.
-                        "$u7e$", => "~",
-                        "$u20$", => " ",
-                        "$u27$", => "'",
-                        "$u5b$", => "[",
-                        "$u5d$", => "]",
-                        "$u7b$", => "{",
-                        "$u7d$", => "}"
+                        "$u7e$" => "~",
+                        "$u20$" => " ",
+                        "$u27$" => "'",
+                        "$u5b$" => "[",
+                        "$u5d$" => "]",
+                        "$u7b$" => "{",
+                        "$u7d$" => "}",
+                        "$u3b$" => ";",
+                        "$u2b$" => "+",
+                        "$u22$" => "\""
                     }
                 } else {
-                    let idx = rest.find('$').unwrap_or(rest.len());
+                    let idx = match rest.char_indices().find(|&(_, c)| c == '$' || c == '.') {
+                        None => rest.len(),
+                        Some((i, _)) => i,
+                    };
                     try!(f.write_str(&rest[..idx]));
                     rest = &rest[idx..];
                 }
@@ -218,6 +238,7 @@ mod tests {
         t!("_ZN8$RF$testE", "&test");
         t!("_ZN8$BP$test4foobE", "*test::foob");
         t!("_ZN9$u20$test4foobE", " test::foob");
+        t!("_ZN35Bar$LT$$u5b$u32$u3b$$u20$4$u5d$$GT$E", "Bar<[u32; 4]>");
     }
 
     #[test]
@@ -231,5 +252,18 @@ mod tests {
         t!("ZN4testE", "test");
         t!("ZN13test$u20$test4foobE", "test test::foob");
         t!("ZN12test$RF$test4foobE", "test&test::foob");
+    }
+
+    #[test]
+    fn demangle_elements_beginning_with_underscore() {
+        t!("_ZN13_$LT$test$GT$E", "<test>");
+        t!("_ZN28_$u7b$$u7b$closure$u7d$$u7d$E", "{{closure}}");
+        t!("_ZN15__STATIC_FMTSTRE", "__STATIC_FMTSTR");
+    }
+
+    #[test]
+    fn demangle_trait_impls() {
+        t!("_ZN71_$LT$Test$u20$$u2b$$u20$$u27$static$u20$as$u20$foo..Bar$LT$Test$GT$$GT$3barE",
+           "<Test + 'static as foo::Bar<Test>>::bar");
     }
 }
