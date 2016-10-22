@@ -5,6 +5,10 @@
 //! symbol name. The demangled representation will be the same as the original
 //! if it doesn't look like a mangled symbol name.
 //!
+//! `Demangle` can be formatted with the `Display` trait. The alternate
+//! modifier (`#`) can be used to format the symbol name without the
+//! trailing hash value.
+//!
 //! # Examples
 //!
 //! ```
@@ -13,6 +17,10 @@
 //! assert_eq!(demangle("_ZN4testE").to_string(), "test");
 //! assert_eq!(demangle("_ZN3foo3barE").to_string(), "foo::bar");
 //! assert_eq!(demangle("foo").to_string(), "foo");
+//! // With hash
+//! assert_eq!(format!("{}", demangle("_ZN3foo17h05af221e174051e9E")), "foo::h05af221e174051e9");
+//! // Without hash
+//! assert_eq!(format!("{:#}", demangle("_ZN3foo17h05af221e174051e9E")), "foo");
 //! ```
 
 #![no_std]
@@ -29,6 +37,8 @@ pub struct Demangle<'a> {
     original: &'a str,
     inner: &'a str,
     valid: bool,
+    /// The number of ::-separated elements in the original name.
+    elements: usize,
 }
 
 /// De-mangles a Rust symbol into a more readable version
@@ -86,6 +96,7 @@ pub fn demangle(s: &str) -> Demangle {
         valid = false;
     }
 
+    let mut elements = 0;
     if valid {
         let mut chars = inner.chars();
         while valid {
@@ -102,6 +113,8 @@ pub fn demangle(s: &str) -> Demangle {
                 break;
             } else if chars.by_ref().take(i - 1).count() != i - 1 {
                 valid = false;
+            } else {
+                elements += 1;
             }
         }
     }
@@ -109,6 +122,7 @@ pub fn demangle(s: &str) -> Demangle {
     Demangle {
         inner: inner,
         valid: valid,
+        elements: elements,
         original: s,
     }
 }
@@ -120,6 +134,11 @@ impl<'a> Demangle<'a> {
     }
 }
 
+// Rust hashes are hex digits with an `h` prepended.
+fn is_rust_hash(s: &str) -> bool {
+    s.starts_with('h') && s[1..].chars().all(|c| c.is_digit(16))
+}
+
 impl<'a> fmt::Display for Demangle<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Alright, let's do this.
@@ -128,13 +147,7 @@ impl<'a> fmt::Display for Demangle<'a> {
         }
 
         let mut inner = self.inner;
-        let mut first = true;
-        while !inner.is_empty() {
-            if !first {
-                try!(f.write_str("::"));
-            } else {
-                first = false;
-            }
+        for element in 0..self.elements {
             let mut rest = inner;
             while rest.chars().next().unwrap().is_digit(10) {
                 rest = &rest[1..];
@@ -142,6 +155,14 @@ impl<'a> fmt::Display for Demangle<'a> {
             let i: usize = inner[..(inner.len() - rest.len())].parse().unwrap();
             inner = &rest[i..];
             rest = &rest[..i];
+            // Skip printing the hash if alternate formatting
+            // was requested.
+            if f.alternate() && element+1 == self.elements && is_rust_hash(&rest) {
+                break;
+            }
+            if element != 0 {
+                try!(f.write_str("::"));
+            }
             if rest.starts_with("_$") {
                 rest = &rest[1..];
             }
@@ -224,6 +245,12 @@ mod tests {
         })
     }
 
+    macro_rules! t_nohash {
+        ($a:expr, $b:expr) => ({
+            assert_eq!(format!("{:#}", super::demangle($a)), $b);
+        })
+    }
+
     #[test]
     fn demangle() {
         t!("test", "test");
@@ -265,5 +292,30 @@ mod tests {
     fn demangle_trait_impls() {
         t!("_ZN71_$LT$Test$u20$$u2b$$u20$$u27$static$u20$as$u20$foo..Bar$LT$Test$GT$$GT$3barE",
            "<Test + 'static as foo::Bar<Test>>::bar");
+    }
+
+    #[test]
+    fn demangle_without_hash() {
+        let s = "_ZN3foo17h05af221e174051e9E";
+        t!(s, "foo::h05af221e174051e9");
+        t_nohash!(s, "foo");
+    }
+
+    #[test]
+    fn demangle_without_hash_edgecases() {
+        // One element, no hash.
+        t_nohash!("_ZN3fooE", "foo");
+        // Two elements, no hash.
+        t_nohash!("_ZN3foo3barE", "foo::bar");
+        // Longer-than-normal hash.
+        t_nohash!("_ZN3foo20h05af221e174051e9abcE", "foo");
+        // Shorter-than-normal hash.
+        t_nohash!("_ZN3foo5h05afE", "foo");
+        // Valid hash, but not at the end.
+        t_nohash!("_ZN17h05af221e174051e93fooE", "h05af221e174051e9::foo");
+        // Not a valid hash, missing the 'h'.
+        t_nohash!("_ZN3foo16ffaf221e174051e9E", "foo::ffaf221e174051e9");
+        // Not a valid hash, has a non-hex-digit.
+        t_nohash!("_ZN3foo17hg5af221e174051e9E", "foo::hg5af221e174051e9");
     }
 }
