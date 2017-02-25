@@ -127,6 +127,12 @@ pub fn demangle(s: &str) -> Demangle {
     }
 }
 
+/// Error returned from the `try_demangle` function below when demangling fails.
+#[derive(Debug, Clone)]
+pub struct TryDemangleError {
+    _priv: (),
+}
+
 /// The same as `demangle`, except return an `Err` if the string does not appear
 /// to be a Rust symbol, rather than "demangling" the given string as a no-op.
 ///
@@ -141,12 +147,12 @@ pub fn demangle(s: &str) -> Demangle {
 /// // While `demangle` will just pass the non-symbol through as a no-op.
 /// assert_eq!(rustc_demangle::demangle(not_a_rust_symbol).as_str(), not_a_rust_symbol);
 /// ```
-pub fn try_demangle(s: &str) -> Result<Demangle, ()> {
+pub fn try_demangle(s: &str) -> Result<Demangle, TryDemangleError> {
     let sym = demangle(s);
     if sym.valid {
         Ok(sym)
     } else {
-        Err(())
+        Err(TryDemangleError { _priv: () })
     }
 }
 
