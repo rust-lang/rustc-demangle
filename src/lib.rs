@@ -127,6 +127,29 @@ pub fn demangle(s: &str) -> Demangle {
     }
 }
 
+/// The same as `demangle`, except return an `Err` if the string does not appear
+/// to be a Rust symbol, rather than "demangling" the given string as a no-op.
+///
+/// ```
+/// extern crate rustc_demangle;
+///
+/// let not_a_rust_symbol = "la la la";
+///
+/// // The `try_demangle` function will reject strings which are not Rust symbols.
+/// assert!(rustc_demangle::try_demangle(not_a_rust_symbol).is_err());
+///
+/// // While `demangle` will just pass the non-symbol through as a no-op.
+/// assert_eq!(rustc_demangle::demangle(not_a_rust_symbol).as_str(), not_a_rust_symbol);
+/// ```
+pub fn try_demangle(s: &str) -> Result<Demangle, ()> {
+    let sym = demangle(s);
+    if sym.valid {
+        Ok(sym)
+    } else {
+        Err(())
+    }
+}
+
 impl<'a> Demangle<'a> {
     /// Returns the underlying string that's being demangled.
     pub fn as_str(&self) -> &'a str {
