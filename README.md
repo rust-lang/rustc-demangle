@@ -6,6 +6,14 @@ Symbol demangling for Rust
 
 [Documentation](http://alexcrichton.com/rustc-demangle)
 
+# Usage
+## Library
+Add `rustc-demangle = "^0.1.4"` to your Cargo.toml dependencies.
+## Executable
+Run `cargo install rustc-demangle --features binary` to install,
+then pipe output through 'rust-demangle' to demangle it.
+For example, `cat asm.S | rust-demangle > asm-demang.S'.
+
 # License
 
 `rustc-demangle` is primarily distributed under the terms of both the MIT license and

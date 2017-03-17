@@ -1,6 +1,6 @@
 [package]
 name = "rustc-demangle"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Alex Crichton <alex@alexcrichton.com>"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
@@ -10,3 +10,32 @@ documentation = "http://alexcrichton.com/rustc-demangle"
 description = """
 Rust compiler symbol demangling.
 """
+
+[[bin]]
+name = "rust-demangle"
+# Cargo doesn't support specifying binary-specific dependencies, so we have to use a 'feature'
+required-features = ["binary"]
+# This breaks things :(
+doc = false
+
+# Binary-only dependencies
+[dependencies.lazy_static]
+version = "^0.2.4"
+optional = true
+[dependencies.regex]
+version = "^0.2.1"
+optional = true
+[dependencies.clap]
+version = "^2.21.1"
+optional = true
+# Exclude all optional features except wrap_help
+default-features = false
+features = ["wrap_help"]
+
+[features]
+# These dependencies are only needed for the binary
+binary = ["regex", "lazy_static", "clap"]
+
+[profile.release]
+# Produces 21% smaller binaries (doesn't affect library users)
+lto = true

@@ -7,8 +7,8 @@ sudo: false
 before_script:
   - pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
 script:
-  - cargo build
-  - cargo test
+  - cargo build --features binary
+  - cargo test --features binary
   - cargo doc
 after_success:
   - travis-cargo --only nightly doc-upload
