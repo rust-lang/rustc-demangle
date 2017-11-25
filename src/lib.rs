@@ -80,7 +80,25 @@ pub struct Demangle<'a> {
 // Note that this demangler isn't quite as fancy as it could be. We have lots
 // of other information in our symbols like hashes, version, type information,
 // etc. Additionally, this doesn't handle glue symbols at all.
-pub fn demangle(s: &str) -> Demangle {
+pub fn demangle(mut s: &str) -> Demangle {
+    // During ThinLTO LLVM may import and rename internal symbols, so strip out
+    // those endings first as they're on of the last manglings applied to symbol
+    // names.
+    let llvm = ".llvm.";
+    if let Some(i) = s.find(llvm) {
+        let candidate = &s[i + llvm.len()..];
+        let all_hex = candidate.chars().all(|c| {
+            match c {
+                'A' ... 'F' | '0' ... '9' => true,
+                _ => false,
+            }
+        });
+
+        if all_hex {
+            s = &s[..i];
+        }
+    }
+
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-rust
     // symbols because we could have any function in the backtrace.
@@ -357,5 +375,12 @@ mod tests {
         t_nohash!("_ZN3foo16ffaf221e174051e9E", "foo::ffaf221e174051e9");
         // Not a valid hash, has a non-hex-digit.
         t_nohash!("_ZN3foo17hg5af221e174051e9E", "foo::hg5af221e174051e9");
+    }
+
+    #[test]
+    fn demangle_thinlto() {
+        // One element, no hash.
+        t!("_ZN3fooE.llvm.9D1C9369", "foo");
+        t_nohash!("_ZN9backtrace3foo17hbb467fcdaea5d79bE.llvm.A5310EB9", "backtrace::foo");
     }
 }
