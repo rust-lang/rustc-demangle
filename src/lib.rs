@@ -89,7 +89,7 @@ pub fn demangle(mut s: &str) -> Demangle {
         let candidate = &s[i + llvm.len()..];
         let all_hex = candidate.chars().all(|c| {
             match c {
-                'A' ... 'F' | '0' ... '9' => true,
+                'A' ... 'F' | '0' ... '9' | '@' => true,
                 _ => false,
             }
         });
@@ -395,6 +395,7 @@ mod tests {
     fn demangle_thinlto() {
         // One element, no hash.
         t!("_ZN3fooE.llvm.9D1C9369", "foo");
+        t!("_ZN3fooE.llvm.9D1C9369@@16", "foo");
         t_nohash!("_ZN9backtrace3foo17hbb467fcdaea5d79bE.llvm.A5310EB9", "backtrace::foo");
     }
 
