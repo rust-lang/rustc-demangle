@@ -14,3 +14,7 @@ Rust compiler symbol demangling.
 [workspace]
 members = ["rustc-demangle-capi"]
 
+[profile.release]
+lto = true
+codegen-units = 1
+incremental = false
