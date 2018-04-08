@@ -10,3 +10,7 @@ documentation = "http://alexcrichton.com/rustc-demangle"
 description = """
 Rust compiler symbol demangling.
 """
+
+[workspace]
+members = ["rustc-demangle-capi"]
+
