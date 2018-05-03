@@ -43,15 +43,14 @@ pub struct Demangle<'a> {
 
 /// De-mangles a Rust symbol into a more readable version
 ///
-/// All rust symbols by default are mangled as they contain characters that
+/// All Rust symbols by default are mangled as they contain characters that
 /// cannot be represented in all object files. The mangling mechanism is similar
 /// to C++'s, but Rust has a few specifics to handle items like lifetimes in
 /// symbols.
 ///
-/// This function will take a **mangled** symbol (typically acquired from a
-/// `Symbol` which is in turn resolved from a `Frame`) and then writes the
-/// de-mangled version into the given `writer`. If the symbol does not look like
-/// a mangled symbol, it is still written to `writer`.
+/// This function will take a **mangled** symbol and return a value. When printed,
+/// the de-mangled version will be written. If the symbol does not look like
+/// a mangled symbol, the original value will be written instead.
 ///
 /// # Examples
 ///
@@ -63,7 +62,7 @@ pub struct Demangle<'a> {
 /// assert_eq!(demangle("foo").to_string(), "foo");
 /// ```
 
-// All rust symbols are in theory lists of "::"-separated identifiers. Some
+// All Rust symbols are in theory lists of "::"-separated identifiers. Some
 // assemblers, however, can't handle these characters in symbol names. To get
 // around this, we use C++-style mangling. The mangling method is:
 //
@@ -82,7 +81,7 @@ pub struct Demangle<'a> {
 // etc. Additionally, this doesn't handle glue symbols at all.
 pub fn demangle(mut s: &str) -> Demangle {
     // During ThinLTO LLVM may import and rename internal symbols, so strip out
-    // those endings first as they're on of the last manglings applied to symbol
+    // those endings first as they're one of the last manglings applied to symbol
     // names.
     let llvm = ".llvm.";
     if let Some(i) = s.find(llvm) {
@@ -100,7 +99,7 @@ pub fn demangle(mut s: &str) -> Demangle {
     }
 
     // First validate the symbol. If it doesn't look like anything we're
-    // expecting, we just print it literally. Note that we must handle non-rust
+    // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
     let mut valid = true;
     let mut inner = s;
