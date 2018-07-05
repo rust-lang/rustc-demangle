@@ -249,7 +249,7 @@ impl<'a> fmt::Display for Demangle<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Alright, let's do this.
         if !self.valid {
-            return f.write_str(self.inner);
+            return f.write_str(self.original);
         }
 
         let mut inner = self.inner;
@@ -464,5 +464,10 @@ mod tests {
             2734cOsbE\n\
             5usage20h)3\0\0\0\0\0\0\07e2734cOsbE\
         ").to_string();
+    }
+
+    #[test]
+    fn invalid_no_chop() {
+        t!("_ZNfooE", "_ZNfooE");
     }
 }
