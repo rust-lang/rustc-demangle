@@ -348,9 +348,11 @@ mod tests {
     use std::prelude::v1::*;
 
     macro_rules! t {
-        ($a:expr, $b:expr) => ({
-            assert_eq!(super::demangle($a).to_string(), $b);
-        })
+        ($a:expr, $b:expr) => (assert!(ok($a, $b)))
+    }
+
+    macro_rules! t_err {
+        ($a:expr) => (assert!(ok_err($a)))
     }
 
     macro_rules! t_nohash {
@@ -359,11 +361,31 @@ mod tests {
         })
     }
 
+    fn ok(sym: &str, expected: &str) -> bool {
+        match super::try_demangle(sym) {
+            Ok(s) => s.to_string() == expected,
+            Err(_) => {
+                println!("error demangling");
+                false
+            }
+        }
+    }
+
+    fn ok_err(sym: &str) -> bool {
+        match super::try_demangle(sym) {
+            Ok(_) => {
+                println!("succeeded in demangling");
+                false
+            }
+            Err(_) => super::demangle(sym).to_string() == sym,
+        }
+    }
+
     #[test]
     fn demangle() {
-        t!("test", "test");
+        t_err!("test");
         t!("_ZN4testE", "test");
-        t!("_ZN4test", "_ZN4test");
+        t_err!("_ZN4test");
         t!("_ZN4test1a2bcE", "test::a::bc");
     }
 
@@ -451,7 +473,7 @@ mod tests {
 
     #[test]
     fn demangle_ignores_suffix_that_doesnt_look_like_a_symbol() {
-        t!("_ZN3fooE.llvm moocow", "_ZN3fooE.llvm moocow");
+        t_err!("_ZN3fooE.llvm moocow");
     }
 
     #[test]
@@ -468,6 +490,6 @@ mod tests {
 
     #[test]
     fn invalid_no_chop() {
-        t!("_ZNfooE", "_ZNfooE");
+        t_err!("_ZNfooE");
     }
 }
