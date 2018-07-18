@@ -312,6 +312,7 @@ impl<'a> fmt::Display for Demangle<'a> {
                         "$u7e$" => "~",
                         "$u20$" => " ",
                         "$u27$" => "'",
+                        "$u3d$" => "=",
                         "$u5b$" => "[",
                         "$u5d$" => "]",
                         "$u7b$" => "{",
@@ -491,5 +492,10 @@ mod tests {
     #[test]
     fn invalid_no_chop() {
         t_err!("_ZNfooE");
+    }
+
+    #[test]
+    fn handle_assoc_types() {
+        t!("_ZN151_$LT$alloc..boxed..Box$LT$alloc..boxed..FnBox$LT$A$C$$u20$Output$u3d$R$GT$$u20$$u2b$$u20$$u27$a$GT$$u20$as$u20$core..ops..function..FnOnce$LT$A$GT$$GT$9call_once17h69e8f44b3723e1caE", "<alloc::boxed::Box<alloc::boxed::FnBox<A, Output=R> + 'a> as core::ops::function::FnOnce<A>>::call_once::h69e8f44b3723e1ca");
     }
 }
