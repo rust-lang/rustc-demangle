@@ -283,7 +283,7 @@ impl<'a> fmt::Display for Demangle<'a> {
                     }
                 } else if rest.starts_with('$') {
                     macro_rules! demangle {
-                        ($($pat:expr => $demangled:expr),*) => ({
+                        ($($pat:expr => $demangled:expr,)*) => ({
                             $(if rest.starts_with($pat) {
                                 try!(f.write_str($demangled));
                                 rest = &rest[$pat.len()..];
@@ -319,7 +319,8 @@ impl<'a> fmt::Display for Demangle<'a> {
                         "$u7d$" => "}",
                         "$u3b$" => ";",
                         "$u2b$" => "+",
-                        "$u22$" => "\""
+                        "$u21$" => "!",
+                        "$u22$" => "\"",
                     }
                 } else {
                     let idx = match rest.char_indices().find(|&(_, c)| c == '$' || c == '.') {
@@ -364,7 +365,14 @@ mod tests {
 
     fn ok(sym: &str, expected: &str) -> bool {
         match super::try_demangle(sym) {
-            Ok(s) => s.to_string() == expected,
+            Ok(s) => {
+                if s.to_string() == expected  {
+                    true
+                } else {
+                    println!("\n{}\n!=\n{}\n", s, expected);
+                    false
+                }
+            }
             Err(_) => {
                 println!("error demangling");
                 false
@@ -497,5 +505,13 @@ mod tests {
     #[test]
     fn handle_assoc_types() {
         t!("_ZN151_$LT$alloc..boxed..Box$LT$alloc..boxed..FnBox$LT$A$C$$u20$Output$u3d$R$GT$$u20$$u2b$$u20$$u27$a$GT$$u20$as$u20$core..ops..function..FnOnce$LT$A$GT$$GT$9call_once17h69e8f44b3723e1caE", "<alloc::boxed::Box<alloc::boxed::FnBox<A, Output=R> + 'a> as core::ops::function::FnOnce<A>>::call_once::h69e8f44b3723e1ca");
+    }
+
+    #[test]
+    fn handle_bang() {
+        t!(
+            "_ZN88_$LT$core..result..Result$LT$$u21$$C$$u20$E$GT$$u20$as$u20$std..process..Termination$GT$6report17hfc41d0da4a40b3e8E",
+            "<core::result::Result<!, E> as std::process::Termination>::report::hfc41d0da4a40b3e8"
+        );
     }
 }
