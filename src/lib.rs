@@ -31,6 +31,7 @@
 extern crate std;
 
 mod legacy;
+mod v0;
 
 use core::fmt;
 
@@ -43,6 +44,7 @@ pub struct Demangle<'a> {
 
 enum DemangleStyle<'a> {
     Legacy(legacy::Demangle<'a>),
+    V0(v0::Demangle<'a>),
 }
 
 /// De-mangles a Rust symbol into a more readable version
@@ -93,7 +95,10 @@ pub fn demangle(mut s: &str) -> Demangle {
 
     let style = match legacy::demangle(s) {
         Ok(d) => Some(DemangleStyle::Legacy(d)),
-        Err(()) => None,
+        Err(()) => match v0::demangle(s) {
+            Ok(d) => Some(DemangleStyle::V0(d)),
+            Err(v0::Invalid) => None,
+        },
     };
     Demangle {
         style: style,
@@ -172,6 +177,9 @@ impl<'a> fmt::Display for Demangle<'a> {
         match self.style {
             None => try!(f.write_str(self.original)),
             Some(DemangleStyle::Legacy(ref d)) => {
+                try!(fmt::Display::fmt(d, f))
+            }
+            Some(DemangleStyle::V0(ref d)) => {
                 try!(fmt::Display::fmt(d, f))
             }
         }
