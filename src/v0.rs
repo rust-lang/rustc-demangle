@@ -1037,4 +1037,14 @@ mod tests {
             "alloc::alloc::box_free::<dyn alloc::boxed::FnBox<(), Output = ()>>"
         );
     }
+
+    #[test]
+    fn demangle_const_generics() {
+        // NOTE(eddyb) this was hand-written, before rustc had working
+        // const generics support (but the mangling format did include them).
+        t_nohash!(
+            "_RNvINtC8arrayvec8ArrayVechKj7b_E3new",
+            "arrayvec::ArrayVec::<u8, 123>::new"
+        );
+    }
 }
