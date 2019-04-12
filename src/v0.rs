@@ -1009,6 +1009,11 @@ mod tests {
             assert_eq!(format!("{:#}", ::demangle($a)), $b);
         })
     }
+    macro_rules! t_nohash_type {
+        ($a:expr, $b:expr) => (
+            t_nohash!(concat!("_RMC0", $a), concat!("<", $b, ">"))
+        )
+    }
 
     #[test]
     fn demangle_utf8_idents() {
@@ -1042,9 +1047,25 @@ mod tests {
     fn demangle_const_generics() {
         // NOTE(eddyb) this was hand-written, before rustc had working
         // const generics support (but the mangling format did include them).
-        t_nohash!(
-            "_RNvINtC8arrayvec8ArrayVechKj7b_E3new",
-            "arrayvec::ArrayVec::<u8, 123>::new"
+        t_nohash_type!(
+            "INtC8arrayvec8ArrayVechKj7b_E",
+            "arrayvec::ArrayVec<u8, 123>"
+        );
+    }
+
+    #[test]
+    fn demangle_exponential_explosion() {
+        // NOTE(eddyb) because of the prefix added by `t_nohash_type!` is
+        // 3 bytes long, `B2_` refers to the start of the type, not `B_`.
+        // 6 backrefs (`B8_E` through `B3_E`) result in 2^6 = 64 copies of `_`.
+        // Also, because the `p` (`_`) type is after all of the starts of the
+        // backrefs, it can be replaced with any other type, independently.
+        t_nohash_type!(
+            concat!("TTTTTT", "p", "B8_E", "B7_E", "B6_E", "B5_E", "B4_E", "B3_E"),
+            "((((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _)))), \
+               ((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _))))), \
+              (((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _)))), \
+               ((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _))))))"
         );
     }
 }
