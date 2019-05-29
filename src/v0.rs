@@ -164,7 +164,7 @@ impl<'s> Ident<'s> {
 
                 let d = match punycode_bytes.next() {
                     Some(d @ b'a'...b'z') => d - b'a',
-                    Some(d @ b'A'...b'J') => 26 + (d - b'A'),
+                    Some(d @ b'0'...b'9') => 26 + (d - b'0'),
                     _ => return Err(()),
                 };
                 let d = d as usize;
@@ -226,18 +226,12 @@ impl<'s> Display for Ident<'s> {
                 try!(f.write_str("punycode{"));
 
                 // Reconstruct a standard Punycode encoding,
-                // by using `-` as the separator and replacing
-                // [A-J] with [0-9] (in the base36 codes).
+                // by using `-` as the separator.
                 if !self.ascii.is_empty() {
                     try!(f.write_str(self.ascii));
                     try!(f.write_str("-"));
                 }
-                for mut b in self.punycode.bytes() {
-                    if let b'A'...b'J' = b {
-                        b = b - b'A' + b'0';
-                    }
-                    try!((b as char).fmt(f));
-                }
+                try!(f.write_str(self.punycode));
 
                 f.write_str("}")
             } else {
@@ -395,6 +389,9 @@ impl<'s> Parser<'s> {
                 }
             }
         }
+
+        // Skip past the optional `_` separator.
+        self.eat(b'_');
 
         let start = self.next;
         self.next = try!(self.next.checked_add(len).ok_or(Invalid));
@@ -688,16 +685,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 let dis = parse!(self, disambiguator);
                 let name = parse!(self, ident);
 
-                if name.punycode.is_empty() {
-                    // Unescape `_[0-9_]`.
-                    let mut name = name.ascii;
-                    if name.starts_with("_") {
-                        name = &name[1..];
-                    }
-                    try!(self.out.write_str(name));
-                } else {
-                    try!(name.fmt(self.out));
-                }
+                try!(name.fmt(self.out));
                 if !self.out.alternate() {
                     try!(self.out.write_str("["));
                     try!(fmt::LowerHex::fmt(&dis, self.out));
@@ -1016,9 +1004,17 @@ mod tests {
     }
 
     #[test]
+    fn demangle_crate_with_leading_digit() {
+        t_nohash!(
+            "_RNvC6_123foo3bar",
+            "123foo::bar"
+        );
+    }
+
+    #[test]
     fn demangle_utf8_idents() {
         t_nohash!(
-            "_RNqCs4fqI2P2rA04_11utf8_identsu30___HhkackfeceaBcbdathfdhJhlqGy",
+            "_RNqCs4fqI2P2rA04_11utf8_identsu30____7hkackfecea1cbdathfdh9hlq6y",
             "utf8_idents::საჭმელად_გემრიელი_სადილი"
         );
     }
