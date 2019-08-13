@@ -47,17 +47,18 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
         next: 0,
     };
     try!(parser.skip_path());
-    if parser.next < parser.sym.len() {
-        // Instantiating crate.
-        try!(parser.skip_path());
-    }
-    if parser.next != parser.sym.len() {
-        return Err(Invalid);
+
+    // Instantiating crate (paths always start with uppercase characters).
+    match parser.sym.as_bytes().get(parser.next) {
+        Some(&b'A'...b'Z') => {
+            try!(parser.skip_path());
+        }
+        _ => {}
     }
 
     Ok((Demangle {
         inner: inner,
-    }, ""))
+    }, &parser.sym[parser.next..]))
 }
 
 impl<'s> Display for Demangle<'s> {
@@ -1070,5 +1071,14 @@ mod tests {
         t_nohash!("_RC3foo.llvm.9D1C9369", "foo");
         t_nohash!("_RC3foo.llvm.9D1C9369@@16", "foo");
         t_nohash!("_RNvC9backtrace3foo.llvm.A5310EB9", "backtrace::foo");
+    }
+
+    #[test]
+    fn demangle_extra_suffix() {
+        // From alexcrichton/rustc-demangle#27:
+        t_nohash!(
+            "_RNvNtNtNtNtCs92dm3009vxr_4rand4rngs7adapter9reseeding4fork23FORK_HANDLER_REGISTERED.0.0",
+            "rand::rngs::adapter::reseeding::fork::FORK_HANDLER_REGISTERED.0.0"
+        );
     }
 }
