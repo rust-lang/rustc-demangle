@@ -1064,4 +1064,11 @@ mod tests {
                ((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _))))))"
         );
     }
+
+    #[test]
+    fn demangle_thinlto() {
+        t_nohash!("_RC3foo.llvm.9D1C9369", "foo");
+        t_nohash!("_RC3foo.llvm.9D1C9369@@16", "foo");
+        t_nohash!("_RNvC9backtrace3foo.llvm.A5310EB9", "backtrace::foo");
+    }
 }
