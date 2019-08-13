@@ -12,7 +12,7 @@ pub struct Demangle<'a> {
 /// This function will take a **mangled** symbol and return a value. When printed,
 /// the de-mangled version will be written. If the symbol does not look like
 /// a mangled symbol, the original value will be written instead.
-pub fn demangle(s: &str) -> Result<Demangle, Invalid> {
+pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
@@ -47,17 +47,18 @@ pub fn demangle(s: &str) -> Result<Demangle, Invalid> {
         next: 0,
     };
     try!(parser.skip_path());
-    if parser.next < parser.sym.len() {
-        // Instantiating crate.
-        try!(parser.skip_path());
-    }
-    if parser.next != parser.sym.len() {
-        return Err(Invalid);
+
+    // Instantiating crate (paths always start with uppercase characters).
+    match parser.sym.as_bytes().get(parser.next) {
+        Some(&b'A'...b'Z') => {
+            try!(parser.skip_path());
+        }
+        _ => {}
     }
 
-    Ok(Demangle {
+    Ok((Demangle {
         inner: inner,
-    })
+    }, &parser.sym[parser.next..]))
 }
 
 impl<'s> Display for Demangle<'s> {
@@ -1062,6 +1063,22 @@ mod tests {
                ((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _))))), \
               (((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _)))), \
                ((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _))))))"
+        );
+    }
+
+    #[test]
+    fn demangle_thinlto() {
+        t_nohash!("_RC3foo.llvm.9D1C9369", "foo");
+        t_nohash!("_RC3foo.llvm.9D1C9369@@16", "foo");
+        t_nohash!("_RNvC9backtrace3foo.llvm.A5310EB9", "backtrace::foo");
+    }
+
+    #[test]
+    fn demangle_extra_suffix() {
+        // From alexcrichton/rustc-demangle#27:
+        t_nohash!(
+            "_RNvNtNtNtNtCs92dm3009vxr_4rand4rngs7adapter9reseeding4fork23FORK_HANDLER_REGISTERED.0.0",
+            "rand::rngs::adapter::reseeding::fork::FORK_HANDLER_REGISTERED.0.0"
         );
     }
 }
