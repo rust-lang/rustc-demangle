@@ -81,25 +81,33 @@ pub fn demangle(mut s: &str) -> Demangle {
         }
     }
 
-    // Output like LLVM IR adds extra period-delimited words. See if
-    // we are in that case and save the trailing words if so.
     let mut suffix = "";
-    if let Some(i) = s.rfind("E.") {
-        let (head, tail) = s.split_at(i + 1); // After the E, before the period
-
-        if is_symbol_like(tail) {
-            s = head;
-            suffix = tail;
+    let mut style = match legacy::demangle(s) {
+        Ok((d, s)) => {
+            suffix = s;
+            Some(DemangleStyle::Legacy(d))
         }
-    }
-
-    let style = match legacy::demangle(s) {
-        Ok(d) => Some(DemangleStyle::Legacy(d)),
         Err(()) => match v0::demangle(s) {
-            Ok(d) => Some(DemangleStyle::V0(d)),
+            Ok((d, s)) => {
+                suffix = s;
+                Some(DemangleStyle::V0(d))
+            }
             Err(v0::Invalid) => None,
         },
     };
+
+    // Output like LLVM IR adds extra period-delimited words. See if
+    // we are in that case and save the trailing words if so.
+    if !suffix.is_empty() {
+        if suffix.starts_with(".") && is_symbol_like(suffix) {
+            // Keep the suffix.
+        } else {
+            // Reset the suffix and invalidate the demangling.
+            suffix = "";
+            style = None;
+        }
+    }
+
     Demangle {
         style: style,
         original: s,

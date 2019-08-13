@@ -12,7 +12,7 @@ pub struct Demangle<'a> {
 /// This function will take a **mangled** symbol and return a value. When printed,
 /// the de-mangled version will be written. If the symbol does not look like
 /// a mangled symbol, the original value will be written instead.
-pub fn demangle(s: &str) -> Result<Demangle, Invalid> {
+pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
@@ -55,9 +55,9 @@ pub fn demangle(s: &str) -> Result<Demangle, Invalid> {
         return Err(Invalid);
     }
 
-    Ok(Demangle {
+    Ok((Demangle {
         inner: inner,
-    })
+    }, ""))
 }
 
 impl<'s> Display for Demangle<'s> {
