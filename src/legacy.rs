@@ -1,3 +1,4 @@
+use core::char;
 use core::fmt;
 
 /// Representation of a demangled symbol name.
@@ -133,7 +134,7 @@ impl<'a> fmt::Display for Demangle<'a> {
             if rest.starts_with("_$") {
                 rest = &rest[1..];
             }
-            while !rest.is_empty() {
+            loop {
                 if rest.starts_with('.') {
                     if let Some('.') = rest[1..].chars().next() {
                         try!(f.write_str("::"));
@@ -143,55 +144,54 @@ impl<'a> fmt::Display for Demangle<'a> {
                         rest = &rest[1..];
                     }
                 } else if rest.starts_with('$') {
-                    macro_rules! demangle {
-                        ($($pat:expr => $demangled:expr,)*) => ({
-                            $(if rest.starts_with($pat) {
-                                try!(f.write_str($demangled));
-                                rest = &rest[$pat.len()..];
-                              } else)*
-                            {
-                                try!(f.write_str(rest));
-                                break;
-                            }
-
-                        })
-                    }
-
-                    // see src/librustc/back/link.rs for these mappings
-                    demangle! {
-                        "$SP$" => "@",
-                        "$BP$" => "*",
-                        "$RF$" => "&",
-                        "$LT$" => "<",
-                        "$GT$" => ">",
-                        "$LP$" => "(",
-                        "$RP$" => ")",
-                        "$C$" => ",",
-
-                        // in theory we can demangle any Unicode code point, but
-                        // for simplicity we just catch the common ones.
-                        "$u7e$" => "~",
-                        "$u20$" => " ",
-                        "$u27$" => "'",
-                        "$u3d$" => "=",
-                        "$u5b$" => "[",
-                        "$u5d$" => "]",
-                        "$u7b$" => "{",
-                        "$u7d$" => "}",
-                        "$u3b$" => ";",
-                        "$u2b$" => "+",
-                        "$u21$" => "!",
-                        "$u22$" => "\"",
-                    }
-                } else {
-                    let idx = match rest.char_indices().find(|&(_, c)| c == '$' || c == '.') {
-                        None => rest.len(),
-                        Some((i, _)) => i,
+                    let (escape, after_escape) = if let Some(end) = rest[1..].find('$') {
+                        (&rest[1..end + 1], &rest[end + 2..])
+                    } else {
+                        break;
                     };
-                    try!(f.write_str(&rest[..idx]));
-                    rest = &rest[idx..];
+
+                    // see src/librustc_codegen_utils/symbol_names/legacy.rs for these mappings
+                    let unescaped = match escape {
+                        "SP" => "@",
+                        "BP" => "*",
+                        "RF" => "&",
+                        "LT" => "<",
+                        "GT" => ">",
+                        "LP" => "(",
+                        "RP" => ")",
+                        "C" => ",",
+
+                        _ => {
+                            if escape.starts_with('u') {
+                                let digits = &escape[1..];
+                                let all_lower_hex = digits.chars().all(|c| match c {
+                                    '0'...'9' | 'a'...'f' => true,
+                                    _ => false,
+                                });
+                                let c = u32::from_str_radix(digits, 16).ok()
+                                    .and_then(char::from_u32);
+                                if let (true, Some(c)) = (all_lower_hex, c) {
+                                    // FIXME(eddyb) do we need to filter out control codepoints?
+                                    if !c.is_control() {
+                                        try!(c.fmt(f));
+                                        rest = after_escape;
+                                        continue;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    };
+                    try!(f.write_str(unescaped));
+                    rest = after_escape;
+                } else if let Some(i) = rest.find(|c| c == '$' || c == '.') {
+                    try!(f.write_str(&rest[..i]));
+                    rest = &rest[i..];
+                } else {
+                    break;
                 }
             }
+            try!(f.write_str(rest));
         }
 
         Ok(())
@@ -365,6 +365,22 @@ mod tests {
         t!(
             "_ZN88_$LT$core..result..Result$LT$$u21$$C$$u20$E$GT$$u20$as$u20$std..process..Termination$GT$6report17hfc41d0da4a40b3e8E",
             "<core::result::Result<!, E> as std::process::Termination>::report::hfc41d0da4a40b3e8"
+        );
+    }
+
+    #[test]
+    fn demangle_utf8_idents() {
+        t_nohash!(
+            "_ZN11utf8_idents157_$u10e1$$u10d0$$u10ed$$u10db$$u10d4$$u10da$$u10d0$$u10d3$_$u10d2$$u10d4$$u10db$$u10e0$$u10d8$$u10d4$$u10da$$u10d8$_$u10e1$$u10d0$$u10d3$$u10d8$$u10da$$u10d8$17h21634fd5714000aaE",
+            "utf8_idents::საჭმელად_გემრიელი_სადილი"
+        );
+    }
+
+    #[test]
+    fn demangle_issue_60925() {
+        t_nohash!(
+            "_ZN11issue_609253foo37Foo$LT$issue_60925..llv$u6d$..Foo$GT$3foo17h059a991a004536adE",
+            "issue_60925::foo::Foo<issue_60925::llvm::Foo>::foo"
         );
     }
 }
