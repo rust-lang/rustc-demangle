@@ -2,8 +2,6 @@
 
 Symbol demangling for Rust
 
-[![Build Status](https://travis-ci.org/alexcrichton/rustc-demangle.svg?branch=master)](https://travis-ci.org/alexcrichton/rustc-demangle)
-
 [Documentation](https://docs.rs/rustc-demangle)
 
 # License
