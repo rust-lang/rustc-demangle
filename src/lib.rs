@@ -69,11 +69,9 @@ pub fn demangle(mut s: &str) -> Demangle {
     let llvm = ".llvm.";
     if let Some(i) = s.find(llvm) {
         let candidate = &s[i + llvm.len()..];
-        let all_hex = candidate.chars().all(|c| {
-            match c {
-                'A' ... 'F' | '0' ... '9' | '@' => true,
-                _ => false,
-            }
+        let all_hex = candidate.chars().all(|c| match c {
+            'A'...'F' | '0'...'9' | '@' => true,
+            _ => false,
         });
 
         if all_hex {
@@ -162,9 +160,7 @@ fn is_symbol_like(s: &str) -> bool {
 // Copied from the documentation of `char::is_ascii_alphanumeric`
 fn is_ascii_alphanumeric(c: char) -> bool {
     match c {
-        '\u{0041}' ... '\u{005A}' |
-        '\u{0061}' ... '\u{007A}' |
-        '\u{0030}' ... '\u{0039}' => true,
+        '\u{0041}'...'\u{005A}' | '\u{0061}'...'\u{007A}' | '\u{0030}'...'\u{0039}' => true,
         _ => false,
     }
 }
@@ -172,10 +168,10 @@ fn is_ascii_alphanumeric(c: char) -> bool {
 // Copied from the documentation of `char::is_ascii_punctuation`
 fn is_ascii_punctuation(c: char) -> bool {
     match c {
-        '\u{0021}' ... '\u{002F}' |
-        '\u{003A}' ... '\u{0040}' |
-        '\u{005B}' ... '\u{0060}' |
-        '\u{007B}' ... '\u{007E}' => true,
+        '\u{0021}'...'\u{002F}'
+        | '\u{003A}'...'\u{0040}'
+        | '\u{005B}'...'\u{0060}'
+        | '\u{007B}'...'\u{007E}' => true,
         _ => false,
     }
 }
@@ -184,12 +180,8 @@ impl<'a> fmt::Display for Demangle<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.style {
             None => try!(f.write_str(self.original)),
-            Some(DemangleStyle::Legacy(ref d)) => {
-                try!(fmt::Display::fmt(d, f))
-            }
-            Some(DemangleStyle::V0(ref d)) => {
-                try!(fmt::Display::fmt(d, f))
-            }
+            Some(DemangleStyle::Legacy(ref d)) => try!(fmt::Display::fmt(d, f)),
+            Some(DemangleStyle::V0(ref d)) => try!(fmt::Display::fmt(d, f)),
         }
         f.write_str(self.suffix)
     }
@@ -206,23 +198,27 @@ mod tests {
     use std::prelude::v1::*;
 
     macro_rules! t {
-        ($a:expr, $b:expr) => (assert!(ok($a, $b)))
+        ($a:expr, $b:expr) => {
+            assert!(ok($a, $b))
+        };
     }
 
     macro_rules! t_err {
-        ($a:expr) => (assert!(ok_err($a)))
+        ($a:expr) => {
+            assert!(ok_err($a))
+        };
     }
 
     macro_rules! t_nohash {
-        ($a:expr, $b:expr) => ({
+        ($a:expr, $b:expr) => {{
             assert_eq!(format!("{:#}", super::demangle($a)), $b);
-        })
+        }};
     }
 
     fn ok(sym: &str, expected: &str) -> bool {
         match super::try_demangle(sym) {
             Ok(s) => {
-                if s.to_string() == expected  {
+                if s.to_string() == expected {
                     true
                 } else {
                     println!("\n{}\n!=\n{}\n", s, expected);
@@ -269,10 +265,12 @@ mod tests {
         t!("_ZN12test$BP$test4foobE", "test*test::foob");
     }
 
-
     #[test]
     fn demangle_osx() {
-        t!("__ZN5alloc9allocator6Layout9for_value17h02a996811f781011E", "alloc::allocator::Layout::for_value::h02a996811f781011");
+        t!(
+            "__ZN5alloc9allocator6Layout9for_value17h02a996811f781011E",
+            "alloc::allocator::Layout::for_value::h02a996811f781011"
+        );
         t!("__ZN38_$LT$core..option..Option$LT$T$GT$$GT$6unwrap18_MSG_FILE_LINE_COL17haf7cb8d5824ee659E", "<core::option::Option<T>>::unwrap::_MSG_FILE_LINE_COL::haf7cb8d5824ee659");
         t!("__ZN4core5slice89_$LT$impl$u20$core..iter..traits..IntoIterator$u20$for$u20$$RF$$u27$a$u20$$u5b$T$u5d$$GT$9into_iter17h450e234d27262170E", "core::slice::<impl core::iter::traits::IntoIterator for &'a [T]>::into_iter::h450e234d27262170");
     }
@@ -293,8 +291,10 @@ mod tests {
 
     #[test]
     fn demangle_trait_impls() {
-        t!("_ZN71_$LT$Test$u20$$u2b$$u20$$u27$static$u20$as$u20$foo..Bar$LT$Test$GT$$GT$3barE",
-           "<Test + 'static as foo::Bar<Test>>::bar");
+        t!(
+            "_ZN71_$LT$Test$u20$$u2b$$u20$$u27$static$u20$as$u20$foo..Bar$LT$Test$GT$$GT$3barE",
+            "<Test + 'static as foo::Bar<Test>>::bar"
+        );
     }
 
     #[test]
@@ -327,7 +327,10 @@ mod tests {
         // One element, no hash.
         t!("_ZN3fooE.llvm.9D1C9369", "foo");
         t!("_ZN3fooE.llvm.9D1C9369@@16", "foo");
-        t_nohash!("_ZN9backtrace3foo17hbb467fcdaea5d79bE.llvm.A5310EB9", "backtrace::foo");
+        t_nohash!(
+            "_ZN9backtrace3foo17hbb467fcdaea5d79bE.llvm.A5310EB9",
+            "backtrace::foo"
+        );
     }
 
     #[test]
@@ -346,11 +349,14 @@ mod tests {
         super::demangle("_ZN2222222222222222222222EE").to_string();
         super::demangle("_ZN5*70527e27.ll34csaғE").to_string();
         super::demangle("_ZN5*70527a54.ll34_$b.1E").to_string();
-        super::demangle("\
-            _ZN5~saäb4e\n\
-            2734cOsbE\n\
-            5usage20h)3\0\0\0\0\0\0\07e2734cOsbE\
-        ").to_string();
+        super::demangle(
+            "\
+             _ZN5~saäb4e\n\
+             2734cOsbE\n\
+             5usage20h)3\0\0\0\0\0\0\07e2734cOsbE\
+             ",
+        )
+        .to_string();
     }
 
     #[test]
