@@ -162,7 +162,7 @@ impl<'a> fmt::Display for Demangle<'a> {
                             if escape.starts_with('u') {
                                 let digits = &escape[1..];
                                 let all_lower_hex = digits.chars().all(|c| match c {
-                                    '0'...'9' | 'a'...'f' => true,
+                                    '0'..='9' | 'a'..='f' => true,
                                     _ => false,
                                 });
                                 let c = u32::from_str_radix(digits, 16)

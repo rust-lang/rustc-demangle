@@ -32,7 +32,7 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
 
     // Paths always start with uppercase characters.
     match inner.as_bytes()[0] {
-        b'A'...b'Z' => {}
+        b'A'..=b'Z' => {}
         _ => return Err(Invalid),
     }
 
@@ -50,7 +50,7 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
 
     // Instantiating crate (paths always start with uppercase characters).
     match parser.sym.as_bytes().get(parser.next) {
-        Some(&b'A'...b'Z') => {
+        Some(&(b'A'..=b'Z')) => {
             try!(parser.skip_path());
         }
         _ => {}
@@ -159,8 +159,8 @@ impl<'s> Ident<'s> {
                 let t = min(max(k.saturating_sub(bias), t_min), t_max);
 
                 let d = match punycode_bytes.next() {
-                    Some(d @ b'a'...b'z') => d - b'a',
-                    Some(d @ b'0'...b'9') => 26 + (d - b'0'),
+                    Some(d @ b'a'..=b'z') => d - b'a',
+                    Some(d @ b'0'..=b'9') => 26 + (d - b'0'),
                     _ => return Err(()),
                 };
                 let d = d as usize;
@@ -295,7 +295,7 @@ impl<'s> Parser<'s> {
         let start = self.next;
         loop {
             match try!(self.next()) {
-                b'0'...b'9' | b'a'...b'f' => {}
+                b'0'..=b'9' | b'a'..=b'f' => {}
                 b'_' => break,
                 _ => return Err(Invalid),
             }
@@ -305,7 +305,7 @@ impl<'s> Parser<'s> {
 
     fn digit_10(&mut self) -> Result<u8, Invalid> {
         let d = match self.peek() {
-            Some(d @ b'0'...b'9') => d - b'0',
+            Some(d @ b'0'..=b'9') => d - b'0',
             _ => return Err(Invalid),
         };
         self.next += 1;
@@ -314,9 +314,9 @@ impl<'s> Parser<'s> {
 
     fn digit_62(&mut self) -> Result<u8, Invalid> {
         let d = match self.peek() {
-            Some(d @ b'0'...b'9') => d - b'0',
-            Some(d @ b'a'...b'z') => 10 + (d - b'a'),
-            Some(d @ b'A'...b'Z') => 10 + 26 + (d - b'A'),
+            Some(d @ b'0'..=b'9') => d - b'0',
+            Some(d @ b'a'..=b'z') => 10 + (d - b'a'),
+            Some(d @ b'A'..=b'Z') => 10 + 26 + (d - b'A'),
             _ => return Err(Invalid),
         };
         self.next += 1;
@@ -351,10 +351,10 @@ impl<'s> Parser<'s> {
     fn namespace(&mut self) -> Result<Option<char>, Invalid> {
         match try!(self.next()) {
             // Special namespaces, like closures and shims.
-            ns @ b'A'...b'Z' => Ok(Some(ns as char)),
+            ns @ b'A'..=b'Z' => Ok(Some(ns as char)),
 
             // Implementation-specific/unspecified namespaces.
-            b'a'...b'z' => Ok(None),
+            b'a'..=b'z' => Ok(None),
 
             _ => Err(Invalid),
         }
