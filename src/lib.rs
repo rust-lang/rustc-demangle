@@ -179,9 +179,9 @@ fn is_ascii_punctuation(c: char) -> bool {
 impl<'a> fmt::Display for Demangle<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.style {
-            None => try!(f.write_str(self.original)),
-            Some(DemangleStyle::Legacy(ref d)) => try!(fmt::Display::fmt(d, f)),
-            Some(DemangleStyle::V0(ref d)) => try!(fmt::Display::fmt(d, f)),
+            None => f.write_str(self.original)?,
+            Some(DemangleStyle::Legacy(ref d)) => fmt::Display::fmt(d, f)?,
+            Some(DemangleStyle::V0(ref d)) => fmt::Display::fmt(d, f)?,
         }
         f.write_str(self.suffix)
     }
