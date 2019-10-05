@@ -19,7 +19,7 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     let inner;
     if s.len() > 2 && s.starts_with("_R") {
         inner = &s[2..];
-    } else if s.len() > 1 && s.starts_with("R") {
+    } else if s.len() > 1 && s.starts_with('R') {
         // On Windows, dbghelp strips leading underscores, so we accept "R..."
         // form too.
         inner = &s[1..];
@@ -56,7 +56,7 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
         _ => {}
     }
 
-    Ok((Demangle { inner: inner }, &parser.sym[parser.next..]))
+    Ok((Demangle { inner }, &parser.sym[parser.next..]))
 }
 
 impl<'s> Display for Demangle<'s> {

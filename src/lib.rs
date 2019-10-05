@@ -97,7 +97,7 @@ pub fn demangle(mut s: &str) -> Demangle {
     // Output like LLVM IR adds extra period-delimited words. See if
     // we are in that case and save the trailing words if so.
     if !suffix.is_empty() {
-        if suffix.starts_with(".") && is_symbol_like(suffix) {
+        if suffix.starts_with('.') && is_symbol_like(suffix) {
             // Keep the suffix.
         } else {
             // Reset the suffix and invalidate the demangling.
@@ -107,9 +107,9 @@ pub fn demangle(mut s: &str) -> Demangle {
     }
 
     Demangle {
-        style: style,
+        style,
         original: s,
-        suffix: suffix,
+        suffix,
     }
 }
 
