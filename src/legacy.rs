@@ -70,7 +70,7 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
 
     let mut elements = 0;
     let mut chars = inner.chars();
-    let mut c = try!(chars.next().ok_or(()));
+    let mut c = chars.next().ok_or(())?;
     while c != 'E' {
         // Decode an identifier element's length.
         if !c.is_digit(10) {
@@ -78,17 +78,17 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
         }
         let mut len = 0usize;
         while let Some(d) = c.to_digit(10) {
-            len = try!(len
+            len = len
                 .checked_mul(10)
                 .and_then(|len| len.checked_add(d as usize))
-                .ok_or(()));
-            c = try!(chars.next().ok_or(()));
+                .ok_or(())?;
+            c = chars.next().ok_or(())?;
         }
 
         // `c` already contains the first character of this identifier, skip it and
         // all the other characters of this identifier, to reach the next element.
         for _ in 0..len {
-            c = try!(chars.next().ok_or(()));
+            c = chars.next().ok_or(())?;
         }
 
         elements += 1;
@@ -126,7 +126,7 @@ impl<'a> fmt::Display for Demangle<'a> {
                 break;
             }
             if element != 0 {
-                try!(f.write_str("::"));
+                f.write_str("::")?;
             }
             if rest.starts_with("_$") {
                 rest = &rest[1..];
@@ -134,10 +134,10 @@ impl<'a> fmt::Display for Demangle<'a> {
             loop {
                 if rest.starts_with('.') {
                     if let Some('.') = rest[1..].chars().next() {
-                        try!(f.write_str("::"));
+                        f.write_str("::")?;
                         rest = &rest[2..];
                     } else {
-                        try!(f.write_str("."));
+                        f.write_str(".")?;
                         rest = &rest[1..];
                     }
                 } else if rest.starts_with('$') {
@@ -171,7 +171,7 @@ impl<'a> fmt::Display for Demangle<'a> {
                                 if let (true, Some(c)) = (all_lower_hex, c) {
                                     // FIXME(eddyb) do we need to filter out control codepoints?
                                     if !c.is_control() {
-                                        try!(c.fmt(f));
+                                        c.fmt(f)?;
                                         rest = after_escape;
                                         continue;
                                     }
@@ -180,16 +180,16 @@ impl<'a> fmt::Display for Demangle<'a> {
                             break;
                         }
                     };
-                    try!(f.write_str(unescaped));
+                    f.write_str(unescaped)?;
                     rest = after_escape;
                 } else if let Some(i) = rest.find(|c| c == '$' || c == '.') {
-                    try!(f.write_str(&rest[..i]));
+                    f.write_str(&rest[..i])?;
                     rest = &rest[i..];
                 } else {
                     break;
                 }
             }
-            try!(f.write_str(rest));
+            f.write_str(rest)?;
         }
 
         Ok(())
