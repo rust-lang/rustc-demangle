@@ -49,11 +49,8 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     parser.skip_path()?;
 
     // Instantiating crate (paths always start with uppercase characters).
-    match parser.sym.as_bytes().get(parser.next) {
-        Some(&(b'A'..=b'Z')) => {
-            parser.skip_path()?;
-        }
-        _ => {}
+    if let Some(&(b'A'..=b'Z')) = parser.sym.as_bytes().get(parser.next) {
+        parser.skip_path()?;
     }
 
     Ok((Demangle { inner }, &parser.sym[parser.next..]))
@@ -374,14 +371,9 @@ impl<'s> Parser<'s> {
         let is_punycode = self.eat(b'u');
         let mut len = self.digit_10()? as usize;
         if len != 0 {
-            loop {
-                match self.digit_10() {
-                    Ok(d) => {
-                        len = len.checked_mul(10).ok_or(Invalid)?;
-                        len = len.checked_add(d as usize).ok_or(Invalid)?;
-                    }
-                    Err(Invalid) => break,
-                }
+            while let Ok(d) = self.digit_10() {
+                len = len.checked_mul(10).ok_or(Invalid)?;
+                len = len.checked_add(d as usize).ok_or(Invalid)?;
             }
         }
 
@@ -772,9 +764,8 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     fn print_type(&mut self) -> fmt::Result {
         let tag = parse!(self, next);
 
-        match basic_type(tag) {
-            Some(ty) => return self.out.write_str(ty),
-            None => {}
+        if let Some(ty) = basic_type(tag) {
+            return self.out.write_str(ty);
         }
 
         match tag {
@@ -840,22 +831,19 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     this.out.write_str("unsafe ")?;
                 }
 
-                match abi {
-                    Some(abi) => {
-                        this.out.write_str("extern \"")?;
+                if let Some(abi) = abi {
+                    this.out.write_str("extern \"")?;
 
-                        // If the ABI had any `-`, they were replaced with `_`,
-                        // so the parts between `_` have to be re-joined with `-`.
-                        let mut parts = abi.split('_');
-                        this.out.write_str(parts.next().unwrap())?;
-                        for part in parts {
-                            this.out.write_str("-")?;
-                            this.out.write_str(part)?;
-                        }
-
-                        this.out.write_str("\" ")?;
+                    // If the ABI had any `-`, they were replaced with `_`,
+                    // so the parts between `_` have to be re-joined with `-`.
+                    let mut parts = abi.split('_');
+                    this.out.write_str(parts.next().unwrap())?;
+                    for part in parts {
+                        this.out.write_str("-")?;
+                        this.out.write_str(part)?;
                     }
-                    None => {}
+
+                    this.out.write_str("\" ")?;
                 }
 
                 this.out.write_str("fn(")?;
