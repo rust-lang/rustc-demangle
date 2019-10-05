@@ -94,13 +94,7 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
         elements += 1;
     }
 
-    Ok((
-        Demangle {
-            inner: inner,
-            elements: elements,
-        },
-        chars.as_str(),
-    ))
+    Ok((Demangle { inner, elements }, chars.as_str()))
 }
 
 // Rust hashes are hex digits with an `h` prepended.
@@ -142,7 +136,7 @@ impl<'a> fmt::Display for Demangle<'a> {
                     }
                 } else if rest.starts_with('$') {
                     let (escape, after_escape) = if let Some(end) = rest[1..].find('$') {
-                        (&rest[1..end + 1], &rest[end + 2..])
+                        (&rest[1..=end], &rest[end + 2..])
                     } else {
                         break;
                     };
