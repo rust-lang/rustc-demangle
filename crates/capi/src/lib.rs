@@ -18,7 +18,7 @@ pub unsafe extern "C" fn rustc_demangle(
 ) -> c_int {
     let mangled_str = match std::ffi::CStr::from_ptr(mangled).to_str() {
         Ok(s) => s,
-        Err(_) => return 0
+        Err(_) => return 0,
     };
     match rustc_demangle::try_demangle(mangled_str) {
         Ok(demangle) => {
