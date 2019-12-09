@@ -8,4 +8,4 @@ name = "rustc_demangle"
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-rustc-demangle = { version = "*", path = ".." }
+rustc-demangle = { version = "0.1.16", path = "../.." }

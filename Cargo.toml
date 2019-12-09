@@ -12,7 +12,7 @@ Rust compiler symbol demangling.
 """
 
 [workspace]
-members = ["rustc-demangle-capi"]
+members = ["crates/capi"]
 
 [dependencies]
 core = { version = '1.0.0', optional = true, package = 'rustc-std-workspace-core' }
