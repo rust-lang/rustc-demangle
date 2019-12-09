@@ -1,0 +1,11 @@
+[package]
+name = "rustc-demangle-capi"
+version = "0.1.0"
+authors = ["Torste Aikio <zokier@gmail.com>"]
+
+[lib]
+name = "rustc_demangle"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+rustc-demangle = { version = "0.1.16", path = "../.." }
