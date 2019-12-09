@@ -16,11 +16,10 @@ pub unsafe extern "C" fn rustc_demangle(
     out: *mut c_char,
     out_size: usize,
 ) -> c_int {
-    let mangled_str = std::ffi::CStr::from_ptr(mangled).to_str();
-    if mangled_str.is_err() {
-        return 0;
-    }
-    let mangled_str = mangled_str.unwrap();
+    let mangled_str = match std::ffi::CStr::from_ptr(mangled).to_str() {
+        Ok(s) => s,
+        Err(_) => return 0
+    };
     match rustc_demangle::try_demangle(mangled_str) {
         Ok(demangle) => {
             let mut out_slice = std::slice::from_raw_parts_mut(out as *mut u8, out_size);
