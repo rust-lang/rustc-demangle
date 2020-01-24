@@ -14,6 +14,27 @@ jobs:
       run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
     - run: cargo build --all
     - run: cargo test --all
+    - run: cargo build --all --features=alloc
+    - run: cargo test --all --features=alloc
+    - run: cargo build --all --features=std
+    - run: cargo test --all --features=std
+    - run: cargo build --all --features=alloc,std
+    - run: cargo test --all --features=alloc,std
+
+  test-old:
+    name: Test on old releases of Rust
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [1.31.1]
+    steps:
+    - uses: actions/checkout@master
+    - name: Install Rust
+      run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+    - run: cargo build --all
+    - run: cargo test --all
+    - run: cargo build --all --features=std
+    - run: cargo test --all --features=std
 
   rustfmt:
     name: Rustfmt
@@ -32,7 +53,7 @@ jobs:
       - name: Install Rust
         run: rustup update stable && rustup default stable
       - name: Build documentation
-        run: cargo doc --no-deps
+        run: cargo doc --no-deps --features alloc
       - name: Publish documentation
         run: |
           cd target/doc

@@ -10,11 +10,23 @@ You can add this as a dependency via your `Cargo.toml`
 
 ```toml
 [dependencies]
-rustc-demangle = "0.1"
+rustc-demangle = { version = "0.1", features = ["alloc"] }
 ```
 
 and then be sure to check out the [crate
 documentation](https://docs.rs/rustc-demangle) for usage.
+
+### Features
+
+The `alloc` feature enables the functionality that requires a memory allocator
+(the [`alloc`] crate).
+
+The `std` feature enables the functionality that requires the [`std`] crate
+(currently doesn't enable any more than the `alloc` feature, but works on old
+versions of Rust from before the [`alloc`] crate was stabilized).
+
+[`alloc`]: https://doc.rust-lang.org/alloc/index.html
+[`std`]: https://doc.rust-lang.org/std/index.html
 
 ## Usage from non-Rust languages
 

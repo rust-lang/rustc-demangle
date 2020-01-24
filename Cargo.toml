@@ -20,6 +20,14 @@ compiler_builtins = { version = '0.1.2', optional = true }
 
 [features]
 rustc-dep-of-std = ['core', 'compiler_builtins']
+alloc = []
+std = []
 
 [profile.release]
 lto = true
+
+[package.metadata.docs.rs]
+features = ["alloc"]
+
+[package.metadata.playground]
+features = ["alloc"]

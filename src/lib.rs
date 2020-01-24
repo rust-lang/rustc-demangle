@@ -26,14 +26,22 @@
 #![no_std]
 #![deny(missing_docs)]
 
-#[cfg(test)]
+#[cfg(any(test, feature = "std"))]
 #[macro_use]
 extern crate std;
+
+#[cfg(all(feature = "alloc", not(feature = "std"), not(test)))]
+#[macro_use]
+extern crate alloc;
 
 mod legacy;
 mod v0;
 
+#[cfg(all(feature = "alloc", not(feature = "std"), not(test)))]
+use alloc::string::{String, ToString};
 use core::fmt;
+#[cfg(any(feature = "std", test))]
+use std::string::{String, ToString};
 
 /// Representation of a demangled symbol name.
 pub struct Demangle<'a> {
@@ -147,6 +155,20 @@ impl<'a> Demangle<'a> {
     pub fn as_str(&self) -> &'a str {
         self.original
     }
+    /// Returns the demangled symbol as a `String`.
+    ///
+    /// The same as `ToString::to_string(self)`
+    #[cfg(any(feature = "alloc", feature = "std", test))]
+    pub fn to_string(&self) -> String {
+        ToString::to_string(self)
+    }
+    /// Returns the demangled symbol as a `String`, in alternate format.
+    ///
+    /// The same as `format!("{:#}", self)`
+    #[cfg(any(feature = "alloc", feature = "std", test))]
+    pub fn to_string_alt(&self) -> String {
+        format!("{:#}", self)
+    }
 }
 
 fn is_symbol_like(s: &str) -> bool {
@@ -211,7 +233,7 @@ mod tests {
 
     macro_rules! t_nohash {
         ($a:expr, $b:expr) => {{
-            assert_eq!(format!("{:#}", super::demangle($a)), $b);
+            assert_eq!(super::demangle($a).to_string_alt(), $b);
         }};
     }
 
