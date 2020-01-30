@@ -12,7 +12,7 @@
 //! # Examples
 //!
 //! ```
-//! use rustc_demangle::demangle;
+//! use rustc_demangle::{demangle, Config, demangle_with_config};
 //!
 //! assert_eq!(demangle("_ZN4testE").to_string(), "test");
 //! assert_eq!(demangle("_ZN3foo3barE").to_string(), "foo::bar");
@@ -21,6 +21,8 @@
 //! assert_eq!(format!("{}", demangle("_ZN3foo17h05af221e174051e9E")), "foo::h05af221e174051e9");
 //! // Without hash
 //! assert_eq!(format!("{:#}", demangle("_ZN3foo17h05af221e174051e9E")), "foo");
+//! // Without hash by clearing Config::with_hash
+//! assert_eq!(format!("{}", demangle_with_config("_ZN3foo17h05af221e174051e9E", Config::new().with_hash(false))), "foo");
 //! ```
 
 #![no_std]
@@ -35,9 +37,36 @@ mod v0;
 
 use core::fmt;
 
+/// demangle configuration
+#[derive(Clone, Debug)]
+pub struct Config {
+    with_hash: bool,
+    // extend with more config options in the future
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self { with_hash: true }
+    }
+}
+
+impl Config {
+    /// create the default demangle configuration
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// set if disambiguating hashes should be displayed. This is the default.
+    ///
+    /// using `format!("{:#}", ...)` is the alternate method of disabling `with_hash`.
+    pub fn with_hash(self, with_hash: bool) -> Self {
+        Self { with_hash, ..self }
+    }
+}
+
 /// Representation of a demangled symbol name.
 pub struct Demangle<'a> {
     style: Option<DemangleStyle<'a>>,
+    config: Config,
     original: &'a str,
     suffix: &'a str,
 }
@@ -62,7 +91,26 @@ enum DemangleStyle<'a> {
 /// assert_eq!(demangle("_ZN3foo3barE").to_string(), "foo::bar");
 /// assert_eq!(demangle("foo").to_string(), "foo");
 /// ```
-pub fn demangle(mut s: &str) -> Demangle {
+pub fn demangle(s: &str) -> Demangle {
+    demangle_with_config(s, Config::new())
+}
+
+/// De-mangles a Rust symbol into a more readable version
+///
+/// This function will take a **mangled** symbol and return a value. When printed,
+/// the de-mangled version will be written. If the symbol does not look like
+/// a mangled symbol, the original value will be written instead.
+///
+/// # Examples
+///
+/// ```
+/// use rustc_demangle::demangle;
+///
+/// assert_eq!(demangle("_ZN4testE").to_string(), "test");
+/// assert_eq!(demangle("_ZN3foo3barE").to_string(), "foo::bar");
+/// assert_eq!(demangle("foo").to_string(), "foo");
+/// ```
+pub fn demangle_with_config(mut s: &str, config: Config) -> Demangle {
     // During ThinLTO LLVM may import and rename internal symbols, so strip out
     // those endings first as they're one of the last manglings applied to symbol
     // names.
@@ -108,6 +156,7 @@ pub fn demangle(mut s: &str) -> Demangle {
 
     Demangle {
         style,
+        config,
         original: s,
         suffix,
     }
@@ -134,7 +183,25 @@ pub struct TryDemangleError {
 /// assert_eq!(rustc_demangle::demangle(not_a_rust_symbol).as_str(), not_a_rust_symbol);
 /// ```
 pub fn try_demangle(s: &str) -> Result<Demangle, TryDemangleError> {
-    let sym = demangle(s);
+    try_demangle_with_config(s, Config::new())
+}
+
+/// The same as `demangle`, except return an `Err` if the string does not appear
+/// to be a Rust symbol, rather than "demangling" the given string as a no-op.
+///
+/// ```
+/// extern crate rustc_demangle;
+///
+/// let not_a_rust_symbol = "la la la";
+///
+/// // The `try_demangle` function will reject strings which are not Rust symbols.
+/// assert!(rustc_demangle::try_demangle(not_a_rust_symbol).is_err());
+///
+/// // While `demangle` will just pass the non-symbol through as a no-op.
+/// assert_eq!(rustc_demangle::demangle(not_a_rust_symbol).as_str(), not_a_rust_symbol);
+/// ```
+pub fn try_demangle_with_config(s: &str, config: Config) -> Result<Demangle, TryDemangleError> {
+    let sym = demangle_with_config(s, config);
     if sym.style.is_some() {
         Ok(sym)
     } else {
@@ -146,6 +213,10 @@ impl<'a> Demangle<'a> {
     /// Returns the underlying string that's being demangled.
     pub fn as_str(&self) -> &'a str {
         self.original
+    }
+    /// Set the demangling configuration
+    pub fn with_config(self, config: Config) -> Self {
+        Self { config, ..self }
     }
 }
 
@@ -178,10 +249,14 @@ fn is_ascii_punctuation(c: char) -> bool {
 
 impl<'a> fmt::Display for Demangle<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut config = self.config.clone();
+        if f.alternate() {
+            config = config.with_hash(false);
+        }
         match self.style {
             None => f.write_str(self.original)?,
-            Some(DemangleStyle::Legacy(ref d)) => fmt::Display::fmt(d, f)?,
-            Some(DemangleStyle::V0(ref d)) => fmt::Display::fmt(d, f)?,
+            Some(DemangleStyle::Legacy(ref d)) => d.fmt(f, &config)?,
+            Some(DemangleStyle::V0(ref d)) => d.fmt(f, &config)?,
         }
         f.write_str(self.suffix)
     }
@@ -209,9 +284,21 @@ mod tests {
         };
     }
 
-    macro_rules! t_nohash {
+    macro_rules! t_nohash_alt {
         ($a:expr, $b:expr) => {{
             assert_eq!(format!("{:#}", super::demangle($a)), $b);
+        }};
+    }
+
+    macro_rules! t_nohash {
+        ($a:expr, $b:expr) => {{
+            assert_eq!(
+                format!(
+                    "{}",
+                    super::demangle_with_config($a, super::Config::new().with_hash(false))
+                ),
+                $b
+            );
         }};
     }
 
@@ -302,6 +389,13 @@ mod tests {
         let s = "_ZN3foo17h05af221e174051e9E";
         t!(s, "foo::h05af221e174051e9");
         t_nohash!(s, "foo");
+    }
+
+    #[test]
+    fn demangle_without_hash_alt() {
+        let s = "_ZN3foo17h05af221e174051e9E";
+        t!(s, "foo::h05af221e174051e9");
+        t_nohash_alt!(s, "foo");
     }
 
     #[test]

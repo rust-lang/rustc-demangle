@@ -1,8 +1,10 @@
+use crate::Config;
 use core::char;
 use core::fmt;
+use core::fmt::Display;
 
 /// Representation of a demangled symbol name.
-pub struct Demangle<'a> {
+pub(crate) struct Demangle<'a> {
     inner: &'a str,
     /// The number of ::-separated elements in the original name.
     elements: usize,
@@ -46,7 +48,7 @@ pub struct Demangle<'a> {
 // Note that this demangler isn't quite as fancy as it could be. We have lots
 // of other information in our symbols like hashes, version, type information,
 // etc. Additionally, this doesn't handle glue symbols at all.
-pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
+pub(crate) fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
@@ -102,8 +104,8 @@ fn is_rust_hash(s: &str) -> bool {
     s.starts_with('h') && s[1..].chars().all(|c| c.is_digit(16))
 }
 
-impl<'a> fmt::Display for Demangle<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<'a> Demangle<'a> {
+    pub(crate) fn fmt(&self, f: &mut fmt::Formatter, config: &Config) -> fmt::Result {
         // Alright, let's do this.
         let mut inner = self.inner;
         for element in 0..self.elements {
@@ -114,9 +116,8 @@ impl<'a> fmt::Display for Demangle<'a> {
             let i: usize = inner[..(inner.len() - rest.len())].parse().unwrap();
             inner = &rest[i..];
             rest = &rest[..i];
-            // Skip printing the hash if alternate formatting
-            // was requested.
-            if f.alternate() && element + 1 == self.elements && is_rust_hash(&rest) {
+            // Skip printing the hash if requested.
+            if !config.with_hash && element + 1 == self.elements && is_rust_hash(&rest) {
                 break;
             }
             if element != 0 {
@@ -208,7 +209,13 @@ mod tests {
 
     macro_rules! t_nohash {
         ($a:expr, $b:expr) => {{
-            assert_eq!(format!("{:#}", ::demangle($a)), $b);
+            assert_eq!(
+                format!(
+                    "{}",
+                    crate::demangle_with_config($a, crate::Config::new().with_hash(false))
+                ),
+                $b
+            );
         }};
     }
 
