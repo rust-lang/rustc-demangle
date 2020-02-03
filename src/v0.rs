@@ -58,7 +58,7 @@ pub(crate) fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
 }
 
 impl<'s> Demangle<'s> {
-    pub(crate) fn fmt(&self, f: &mut fmt::Formatter, config: &Config) -> fmt::Result {
+    pub(crate) fn fmt_with_config(&self, f: &mut fmt::Formatter, config: &Config) -> fmt::Result {
         let mut printer = Printer {
             parser: Ok(Parser {
                 sym: self.inner,
@@ -208,7 +208,7 @@ impl<'s> Ident<'s> {
 }
 
 impl<'s> Ident<'s> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt_with_config(&self, f: &mut fmt::Formatter, _config: &Config) -> fmt::Result {
         self.try_small_punycode_decode(|chars| {
             for &c in chars {
                 c.fmt(f)?;
@@ -680,7 +680,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 let dis = parse!(self, disambiguator);
                 let name = parse!(self, ident);
 
-                name.fmt(self.out)?;
+                name.fmt_with_config(self.out, self.config)?;
                 if self.config.with_hash {
                     self.out.write_str("[")?;
                     fmt::LowerHex::fmt(&dis, self.out)?;
@@ -706,7 +706,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                         }
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str(":")?;
-                            name.fmt(self.out)?;
+                            name.fmt_with_config(self.out, self.config)?;
                         }
                         self.out.write_str("#")?;
                         dis.fmt(self.out)?;
@@ -717,7 +717,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     None => {
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str("::")?;
-                            name.fmt(self.out)?;
+                            name.fmt_with_config(self.out, self.config)?;
                         }
                     }
                 }
@@ -922,7 +922,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             }
 
             let name = parse!(self, ident);
-            name.fmt(self.out)?;
+            name.fmt_with_config(self.out, self.config)?;
             self.out.write_str(" = ")?;
             self.print_type()?;
         }

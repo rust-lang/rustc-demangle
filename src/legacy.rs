@@ -105,7 +105,7 @@ fn is_rust_hash(s: &str) -> bool {
 }
 
 impl<'a> Demangle<'a> {
-    pub(crate) fn fmt(&self, f: &mut fmt::Formatter, config: &Config) -> fmt::Result {
+    pub(crate) fn fmt_with_config(&self, f: &mut fmt::Formatter, config: &Config) -> fmt::Result {
         // Alright, let's do this.
         let mut inner = self.inner;
         for element in 0..self.elements {

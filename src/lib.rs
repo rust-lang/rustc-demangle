@@ -255,8 +255,8 @@ impl<'a> fmt::Display for Demangle<'a> {
         }
         match self.style {
             None => f.write_str(self.original)?,
-            Some(DemangleStyle::Legacy(ref d)) => d.fmt(f, &config)?,
-            Some(DemangleStyle::V0(ref d)) => d.fmt(f, &config)?,
+            Some(DemangleStyle::Legacy(ref d)) => d.fmt_with_config(f, &config)?,
+            Some(DemangleStyle::V0(ref d)) => d.fmt_with_config(f, &config)?,
         }
         f.write_str(self.suffix)
     }
