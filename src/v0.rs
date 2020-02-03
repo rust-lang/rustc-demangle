@@ -1,9 +1,10 @@
+use crate::Config;
 use core::char;
 use core::fmt;
 use core::fmt::Display;
 
 /// Representation of a demangled symbol name.
-pub struct Demangle<'a> {
+pub(crate) struct Demangle<'a> {
     inner: &'a str,
 }
 
@@ -12,7 +13,7 @@ pub struct Demangle<'a> {
 /// This function will take a **mangled** symbol and return a value. When printed,
 /// the de-mangled version will be written. If the symbol does not look like
 /// a mangled symbol, the original value will be written instead.
-pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
+pub(crate) fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
@@ -56,14 +57,15 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     Ok((Demangle { inner }, &parser.sym[parser.next..]))
 }
 
-impl<'s> Display for Demangle<'s> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<'s> Demangle<'s> {
+    pub(crate) fn fmt_with_config(&self, f: &mut fmt::Formatter, config: &Config) -> fmt::Result {
         let mut printer = Printer {
             parser: Ok(Parser {
                 sym: self.inner,
                 next: 0,
             }),
             out: f,
+            config,
             bound_lifetime_depth: 0,
         };
         printer.print_path(true)
@@ -71,7 +73,7 @@ impl<'s> Display for Demangle<'s> {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct Invalid;
+pub(crate) struct Invalid;
 
 struct Ident<'s> {
     /// ASCII part of the identifier.
@@ -205,8 +207,8 @@ impl<'s> Ident<'s> {
     }
 }
 
-impl<'s> Display for Ident<'s> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<'s> Ident<'s> {
+    fn fmt_with_config(&self, f: &mut fmt::Formatter, _config: &Config) -> fmt::Result {
         self.try_small_punycode_decode(|chars| {
             for &c in chars {
                 c.fmt(f)?;
@@ -550,6 +552,7 @@ impl<'s> Parser<'s> {
 struct Printer<'a, 'b: 'a, 's> {
     parser: Result<Parser<'s>, Invalid>,
     out: &'a mut fmt::Formatter<'b>,
+    config: &'a Config,
     bound_lifetime_depth: u32,
 }
 
@@ -594,6 +597,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         Printer {
             parser: self.parser_mut().and_then(|p| p.backref()),
             out: self.out,
+            config: self.config,
             bound_lifetime_depth: self.bound_lifetime_depth,
         }
     }
@@ -676,8 +680,8 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 let dis = parse!(self, disambiguator);
                 let name = parse!(self, ident);
 
-                name.fmt(self.out)?;
-                if !self.out.alternate() {
+                name.fmt_with_config(self.out, self.config)?;
+                if self.config.with_hash {
                     self.out.write_str("[")?;
                     fmt::LowerHex::fmt(&dis, self.out)?;
                     self.out.write_str("]")?;
@@ -702,7 +706,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                         }
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str(":")?;
-                            name.fmt(self.out)?;
+                            name.fmt_with_config(self.out, self.config)?;
                         }
                         self.out.write_str("#")?;
                         dis.fmt(self.out)?;
@@ -713,7 +717,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     None => {
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str("::")?;
-                            name.fmt(self.out)?;
+                            name.fmt_with_config(self.out, self.config)?;
                         }
                     }
                 }
@@ -918,7 +922,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             }
 
             let name = parse!(self, ident);
-            name.fmt(self.out)?;
+            name.fmt_with_config(self.out, self.config)?;
             self.out.write_str(" = ")?;
             self.print_type()?;
         }
@@ -949,7 +953,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             self.print_const_uint()?;
         }
 
-        if !self.out.alternate() {
+        if self.config.with_hash {
             self.out.write_str(": ")?;
             self.out.write_str(ty)?;
         }
@@ -978,7 +982,13 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 mod tests {
     macro_rules! t_nohash {
         ($a:expr, $b:expr) => {{
-            assert_eq!(format!("{:#}", ::demangle($a)), $b);
+            assert_eq!(
+                format!(
+                    "{}",
+                    crate::demangle_with_config($a, crate::Config::new().with_hash(false))
+                ),
+                $b
+            );
         }};
     }
     macro_rules! t_nohash_type {
