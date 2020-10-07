@@ -56,6 +56,21 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     Ok((Demangle { inner }, &parser.sym[parser.next..]))
 }
 
+fn supported_const_generic_type(ty_tag: u8) -> bool {
+    match ty_tag {
+        // Unsigned integer types.
+        b'h' | b't' | b'm' | b'y' | b'o' | b'j' |
+        // Signed integer types.
+        b'a' | b's' | b'l' | b'x' | b'n' | b'i' |
+        // Bool.
+        b'b' |
+        // Char.
+        b'c' => true,
+
+        _ => false,
+    }
+}
+
 impl<'s> Display for Demangle<'s> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut printer = Printer {
@@ -532,15 +547,17 @@ impl<'s> Parser<'s> {
             return Ok(());
         }
 
-        match self.next()? {
-            // Unsigned integer types.
-            b'h' | b't' | b'm' | b'y' | b'o' | b'j' => {}
-
-            _ => return Err(Invalid),
+        let ty_tag = self.next()?;
+        if !supported_const_generic_type(ty_tag) {
+            return Err(Invalid);
         }
 
         if self.eat(b'p') {
             return Ok(());
+        }
+        // Negation on signed integers.
+        if let b'a' | b's' | b'l' | b'x' | b'n' | b'i' = ty_tag {
+            let _ = self.eat(b'n');
         }
         self.hex_nibbles()?;
         Ok(())
@@ -936,21 +953,31 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         }
 
         let ty_tag = parse!(self, next);
-        let ty = match ty_tag {
-            // Unsigned integer types.
-            b'h' | b't' | b'm' | b'y' | b'o' | b'j' => basic_type(ty_tag).unwrap(),
-
-            _ => invalid!(self),
-        };
+        if !supported_const_generic_type(ty_tag) {
+            invalid!(self);
+        }
 
         if self.eat(b'p') {
             self.out.write_str("_")?;
         } else {
-            self.print_const_uint()?;
+            match ty_tag {
+                // Unsigned integer types.
+                b'h' | b't' | b'm' | b'y' | b'o' | b'j' => self.print_const_uint()?,
+                // Signed integer types.
+                b'a' | b's' | b'l' | b'x' | b'n' | b'i' => self.print_const_int()?,
+                // Bool.
+                b'b' => self.print_const_bool()?,
+                // Char.
+                b'c' => self.print_const_char()?,
+
+                // This branch ought to be unreachable.
+                _ => invalid!(self),
+            };
         }
 
         if !self.out.alternate() {
             self.out.write_str(": ")?;
+            let ty = basic_type(ty_tag).unwrap();
             self.out.write_str(ty)?;
         }
 
@@ -971,6 +998,41 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             v = (v << 4) | (c.to_digit(16).unwrap() as u64);
         }
         v.fmt(self.out)
+    }
+
+    fn print_const_int(&mut self) -> fmt::Result {
+        if self.eat(b'n') {
+            self.out.write_str("-")?;
+        }
+
+        self.print_const_uint()
+    }
+
+    fn print_const_bool(&mut self) -> fmt::Result {
+        match parse!(self, hex_nibbles).as_bytes() {
+            b"0" => self.out.write_str("false"),
+            b"1" => self.out.write_str("true"),
+            _ => invalid!(self),
+        }
+    }
+
+    fn print_const_char(&mut self) -> fmt::Result {
+        let hex = parse!(self, hex_nibbles);
+
+        // Valid `char`s fit in `u32`.
+        if hex.len() > 8 {
+            invalid!(self);
+        }
+
+        let mut v = 0;
+        for c in hex.chars() {
+            v = (v << 4) | (c.to_digit(16).unwrap() as u32);
+        }
+        if let Some(c) = char::from_u32(v) {
+            write!(self.out, "'{}'", c)
+        } else {
+            invalid!(self)
+        }
     }
 }
 
@@ -1027,6 +1089,34 @@ mod tests {
         t_nohash_type!(
             "INtC8arrayvec8ArrayVechKj7b_E",
             "arrayvec::ArrayVec<u8, 123>"
+        );
+        t_nohash!(
+            "_RMCs4fqI2P2rA04_13const_genericINtB0_8UnsignedKhb_E",
+            "<const_generic::Unsigned<11>>"
+        );
+        t_nohash!(
+            "_RMCs4fqI2P2rA04_13const_genericINtB0_6SignedKs98_E",
+            "<const_generic::Signed<152>>"
+        );
+        t_nohash!(
+            "_RMCs4fqI2P2rA04_13const_genericINtB0_6SignedKanb_E",
+            "<const_generic::Signed<-11>>"
+        );
+        t_nohash!(
+            "_RMCs4fqI2P2rA04_13const_genericINtB0_4BoolKb0_E",
+            "<const_generic::Bool<false>>"
+        );
+        t_nohash!(
+            "_RMCs4fqI2P2rA04_13const_genericINtB0_4BoolKb1_E",
+            "<const_generic::Bool<true>>"
+        );
+        t_nohash!(
+            "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKc76_E",
+            "<const_generic::Char<'v'>>"
+        );
+        t_nohash!(
+            "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKc2202_E",
+            "<const_generic::Char<'∂'>>"
         );
     }
 
