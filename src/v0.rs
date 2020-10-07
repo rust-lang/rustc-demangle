@@ -548,13 +548,16 @@ impl<'s> Parser<'s> {
         }
 
         let ty_tag = self.next()?;
+
+        if ty_tag == b'p' {
+            // We don't encode the type if the value is a placeholder.
+            return Ok(());
+        }
+
         if !supported_const_generic_type(ty_tag) {
             return Err(Invalid);
         }
 
-        if self.eat(b'p') {
-            return Ok(());
-        }
         // Negation on signed integers.
         if let b'a' | b's' | b'l' | b'x' | b'n' | b'i' = ty_tag {
             let _ = self.eat(b'n');
@@ -953,27 +956,30 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         }
 
         let ty_tag = parse!(self, next);
+
+        if ty_tag == b'p' {
+            // We don't encode the type if the value is a placeholder.
+            self.out.write_str("_")?;
+            return Ok(());
+        }
+
         if !supported_const_generic_type(ty_tag) {
             invalid!(self);
         }
 
-        if self.eat(b'p') {
-            self.out.write_str("_")?;
-        } else {
-            match ty_tag {
-                // Unsigned integer types.
-                b'h' | b't' | b'm' | b'y' | b'o' | b'j' => self.print_const_uint()?,
-                // Signed integer types.
-                b'a' | b's' | b'l' | b'x' | b'n' | b'i' => self.print_const_int()?,
-                // Bool.
-                b'b' => self.print_const_bool()?,
-                // Char.
-                b'c' => self.print_const_char()?,
+        match ty_tag {
+            // Unsigned integer types.
+            b'h' | b't' | b'm' | b'y' | b'o' | b'j' => self.print_const_uint()?,
+            // Signed integer types.
+            b'a' | b's' | b'l' | b'x' | b'n' | b'i' => self.print_const_int()?,
+            // Bool.
+            b'b' => self.print_const_bool()?,
+            // Char.
+            b'c' => self.print_const_char()?,
 
-                // This branch ought to be unreachable.
-                _ => invalid!(self),
-            };
-        }
+            // This branch ought to be unreachable.
+            _ => invalid!(self),
+        };
 
         if !self.out.alternate() {
             self.out.write_str(": ")?;
@@ -1117,6 +1123,10 @@ mod tests {
         t_nohash!(
             "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKc2202_E",
             "<const_generic::Char<'∂'>>"
+        );
+        t_nohash!(
+            "_RNvNvMCs4fqI2P2rA04_13const_genericINtB4_3FooKpE3foo3FOO",
+            "<const_generic::Foo<_>>::foo::FOO"
         );
     }
 
