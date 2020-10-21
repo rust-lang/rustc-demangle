@@ -56,21 +56,6 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     Ok((Demangle { inner }, &parser.sym[parser.next..]))
 }
 
-fn supported_const_generic_type(ty_tag: u8) -> bool {
-    match ty_tag {
-        // Unsigned integer types.
-        b'h' | b't' | b'm' | b'y' | b'o' | b'j' |
-        // Signed integer types.
-        b'a' | b's' | b'l' | b'x' | b'n' | b'i' |
-        // Bool.
-        b'b' |
-        // Char.
-        b'c' => true,
-
-        _ => false,
-    }
-}
-
 impl<'s> Display for Demangle<'s> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut printer = Printer {
@@ -554,14 +539,23 @@ impl<'s> Parser<'s> {
             return Ok(());
         }
 
-        if !supported_const_generic_type(ty_tag) {
-            return Err(Invalid);
+        match ty_tag {
+            // Unsigned integer types.
+            b'h' | b't' | b'm' | b'y' | b'o' | b'j' |
+            // Bool.
+            b'b' |
+            // Char.
+            b'c' => {}
+
+            // Signed integer types.
+            b'a' | b's' | b'l' | b'x' | b'n' | b'i' => {
+                // Negation on signed integers.
+                let _ = self.eat(b'n');
+            }
+
+            _ => return Err(Invalid),
         }
 
-        // Negation on signed integers.
-        if let b'a' | b's' | b'l' | b'x' | b'n' | b'i' = ty_tag {
-            let _ = self.eat(b'n');
-        }
         self.hex_nibbles()?;
         Ok(())
     }
@@ -963,10 +957,6 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             return Ok(());
         }
 
-        if !supported_const_generic_type(ty_tag) {
-            invalid!(self);
-        }
-
         match ty_tag {
             // Unsigned integer types.
             b'h' | b't' | b'm' | b'y' | b'o' | b'j' => self.print_const_uint()?,
@@ -1035,7 +1025,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             v = (v << 4) | (c.to_digit(16).unwrap() as u32);
         }
         if let Some(c) = char::from_u32(v) {
-            write!(self.out, "'{}'", c)
+            write!(self.out, "{:?}", c)
         } else {
             invalid!(self)
         }
@@ -1119,6 +1109,10 @@ mod tests {
         t_nohash!(
             "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKc76_E",
             "<const_generic::Char<'v'>>"
+        );
+        t_nohash!(
+            "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKca_E",
+            "<const_generic::Char<'\\n'>>"
         );
         t_nohash!(
             "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKc2202_E",
