@@ -1,6 +1,17 @@
 use core::char;
 use core::fmt;
-use core::fmt::Display;
+use core::fmt::{Display, Write};
+
+// Maximum recursion depth when printing symbols before we just bail out saying
+// "this symbol is invalid"
+const MAX_DEPTH: u32 = 1_000;
+
+// Approximately the maximum size of the symbol that we'll print. This is
+// approximate because it only limits calls writing to `LimitedFormatter`, but
+// not all writes exclusively go through `LimitedFormatter`. Some writes go
+// directly to the underlying formatter, but when that happens we always write
+// at least a little to the `LimitedFormatter`.
+const MAX_APPROX_SIZE: usize = 1_000_000;
 
 /// Representation of a demangled symbol name.
 pub struct Demangle<'a> {
@@ -58,13 +69,18 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
 
 impl<'s> Display for Demangle<'s> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut remaining = MAX_APPROX_SIZE;
         let mut printer = Printer {
             parser: Ok(Parser {
                 sym: self.inner,
                 next: 0,
             }),
-            out: f,
+            out: LimitedFormatter {
+                remaining: &mut remaining,
+                inner: f,
+            },
             bound_lifetime_depth: 0,
+            depth: 0,
         };
         printer.print_path(true)
     }
@@ -563,8 +579,9 @@ impl<'s> Parser<'s> {
 
 struct Printer<'a, 'b: 'a, 's> {
     parser: Result<Parser<'s>, Invalid>,
-    out: &'a mut fmt::Formatter<'b>,
+    out: LimitedFormatter<'a, 'b>,
     bound_lifetime_depth: u32,
+    depth: u32,
 }
 
 /// Mark the parser as errored, print `?` and return early.
@@ -603,12 +620,25 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         self.parser_mut().map(|p| p.eat(b)) == Ok(true)
     }
 
+    fn bump_depth(&mut self) -> fmt::Result {
+        self.depth += 1;
+        if self.depth > MAX_DEPTH {
+            Err(fmt::Error)
+        } else {
+            Ok(())
+        }
+    }
+
     /// Return a nested parser for a backref.
     fn backref_printer<'c>(&'c mut self) -> Printer<'c, 'b, 's> {
         Printer {
             parser: self.parser_mut().and_then(|p| p.backref()),
-            out: self.out,
+            out: LimitedFormatter {
+                remaining: self.out.remaining,
+                inner: self.out.inner,
+            },
             bound_lifetime_depth: self.bound_lifetime_depth,
+            depth: self.depth,
         }
     }
 
@@ -625,11 +655,11 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 // Try to print lifetimes alphabetically first.
                 if depth < 26 {
                     let c = (b'a' + depth as u8) as char;
-                    c.fmt(self.out)
+                    c.fmt(self.out.inner)
                 } else {
                     // Use `'_123` after running out of letters.
                     self.out.write_str("_")?;
-                    depth.fmt(self.out)
+                    depth.fmt(self.out.inner)
                 }
             }
             None => invalid!(self),
@@ -684,16 +714,17 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     }
 
     fn print_path(&mut self, in_value: bool) -> fmt::Result {
+        self.bump_depth()?;
         let tag = parse!(self, next);
         match tag {
             b'C' => {
                 let dis = parse!(self, disambiguator);
                 let name = parse!(self, ident);
 
-                name.fmt(self.out)?;
-                if !self.out.alternate() {
+                name.fmt(self.out.inner)?;
+                if !self.out.inner.alternate() {
                     self.out.write_str("[")?;
-                    fmt::LowerHex::fmt(&dis, self.out)?;
+                    fmt::LowerHex::fmt(&dis, self.out.inner)?;
                     self.out.write_str("]")?;
                 }
             }
@@ -712,14 +743,14 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                         match ns {
                             'C' => self.out.write_str("closure")?,
                             'S' => self.out.write_str("shim")?,
-                            _ => ns.fmt(self.out)?,
+                            _ => ns.fmt(self.out.inner)?,
                         }
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str(":")?;
-                            name.fmt(self.out)?;
+                            name.fmt(self.out.inner)?;
                         }
                         self.out.write_str("#")?;
-                        dis.fmt(self.out)?;
+                        dis.fmt(self.out.inner)?;
                         self.out.write_str("}")?;
                     }
 
@@ -727,7 +758,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     None => {
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str("::")?;
-                            name.fmt(self.out)?;
+                            name.fmt(self.out.inner)?;
                         }
                     }
                 }
@@ -761,6 +792,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             }
             _ => invalid!(self),
         }
+        self.depth -= 1;
         Ok(())
     }
 
@@ -782,6 +814,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             return self.out.write_str(ty);
         }
 
+        self.bump_depth()?;
         match tag {
             b'R' | b'Q' => {
                 self.out.write_str("&")?;
@@ -898,6 +931,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 self.print_path(false)?;
             }
         }
+        self.depth -= 1;
         Ok(())
     }
 
@@ -932,7 +966,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             }
 
             let name = parse!(self, ident);
-            name.fmt(self.out)?;
+            name.fmt(self.out.inner)?;
             self.out.write_str(" = ")?;
             self.print_type()?;
         }
@@ -971,7 +1005,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             _ => invalid!(self),
         };
 
-        if !self.out.alternate() {
+        if !self.out.inner.alternate() {
             self.out.write_str(": ")?;
             let ty = basic_type(ty_tag).unwrap();
             self.out.write_str(ty)?;
@@ -993,7 +1027,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         for c in hex.chars() {
             v = (v << 4) | (c.to_digit(16).unwrap() as u64);
         }
-        v.fmt(self.out)
+        v.fmt(self.out.inner)
     }
 
     fn print_const_int(&mut self) -> fmt::Result {
@@ -1154,5 +1188,22 @@ mod tests {
             "_RNvNtNtNtNtCs92dm3009vxr_4rand4rngs7adapter9reseeding4fork23FORK_HANDLER_REGISTERED.0.0",
             "rand::rngs::adapter::reseeding::fork::FORK_HANDLER_REGISTERED.0.0"
         );
+    }
+}
+
+struct LimitedFormatter<'a, 'b> {
+    remaining: &'a mut usize,
+    inner: &'a mut fmt::Formatter<'b>,
+}
+
+impl Write for LimitedFormatter<'_, '_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        match self.remaining.checked_sub(s.len()) {
+            Some(amt) => {
+                *self.remaining = amt;
+                self.inner.write_str(s)
+            }
+            None => Err(fmt::Error),
+        }
     }
 }
