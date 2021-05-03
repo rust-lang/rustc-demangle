@@ -376,4 +376,23 @@ mod tests {
             "<core::result::Result<!, E> as std::process::Termination>::report::hfc41d0da4a40b3e8"
         );
     }
+
+    #[test]
+    fn limit_recursion() {
+        use std::fmt::Write;
+        let mut s = String::new();
+        assert!(write!(s, "{}", super::demangle("_RNvB_1a")).is_err());
+    }
+
+    #[test]
+    fn limit_output() {
+        use std::fmt::Write;
+        let mut s = String::new();
+        assert!(write!(
+            s,
+            "{}",
+            super::demangle("RYFG_FGyyEvRYFF_EvRYFFEvERLB_B_B_ERLRjB_B_B_")
+        )
+        .is_err());
+    }
 }

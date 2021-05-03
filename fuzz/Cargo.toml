@@ -1,0 +1,19 @@
+[package]
+name = "rustc-demangle-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rustc-demangle = { path = '..' }
+
+[[bin]]
+name = "demangle"
+path = "fuzz_targets/demangle.rs"
+test = false
+doc = false
