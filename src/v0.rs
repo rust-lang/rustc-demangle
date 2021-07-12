@@ -160,8 +160,8 @@ impl<'s> Ident<'s> {
         let mut len = 0;
 
         // Populate initial output from ASCII fragment.
-        for c in self.ascii.chars() {
-            insert(len, c)?;
+        for c in self.ascii.bytes() {
+            insert(len, c as char)?;
             len += 1;
         }
 
