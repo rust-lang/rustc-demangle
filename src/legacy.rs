@@ -155,8 +155,8 @@ impl<'a> fmt::Display for Demangle<'a> {
                         _ => {
                             if escape.starts_with('u') {
                                 let digits = &escape[1..];
-                                let all_lower_hex = digits.chars().all(|c| match c {
-                                    '0'..='9' | 'a'..='f' => true,
+                                let all_lower_hex = digits.bytes().all(|c| match c {
+                                    b'0'..=b'9' | b'a'..=b'f' => true,
                                     _ => false,
                                 });
                                 let c = u32::from_str_radix(digits, 16)
