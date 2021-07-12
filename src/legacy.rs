@@ -113,7 +113,12 @@ impl<'a> fmt::Display for Demangle<'a> {
         let mut inner = self.inner;
         for element in 0..self.elements {
             let mut rest = inner;
-            while rest.chars().next().unwrap().is_digit(10) {
+            while rest
+                .bytes()
+                .next()
+                .map(|c| (c as char).is_digit(10))
+                .unwrap_or(false)
+            {
                 rest = &rest[1..];
             }
             let i: usize = inner[..(inner.len() - rest.len())].parse().unwrap();
@@ -132,7 +137,7 @@ impl<'a> fmt::Display for Demangle<'a> {
             }
             loop {
                 if rest.starts_with('.') {
-                    if let Some('.') = rest[1..].chars().next() {
+                    if let Some(b'.') = rest[1..].bytes().next() {
                         f.write_str("::")?;
                         rest = &rest[2..];
                     } else {
