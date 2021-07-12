@@ -95,8 +95,8 @@ pub fn demangle(mut s: &str) -> Demangle<'_> {
     let llvm = ".llvm.";
     if let Some(i) = s.find(llvm) {
         let candidate = &s[i + llvm.len()..];
-        let all_hex = candidate.chars().all(|c| match c {
-            'A'..='F' | '0'..='9' | '@' => true,
+        let all_hex = candidate.bytes().all(|c| match c {
+            b'A'..=b'F' | b'0'..=b'9' | b'@' => true,
             _ => false,
         });
 
