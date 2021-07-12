@@ -38,16 +38,15 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ParseError> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
-    let inner;
-    if s.len() > 2 && s.starts_with("_R") {
-        inner = &s[2..];
-    } else if s.len() > 1 && s.starts_with('R') {
+    let inner = if let Some(s) = s.strip_prefix("_R") {
+        s
+    } else if let Some(s) = s.strip_prefix('R') {
         // On Windows, dbghelp strips leading underscores, so we accept "R..."
         // form too.
-        inner = &s[1..];
-    } else if s.len() > 3 && s.starts_with("__R") {
+        s
+    } else if let Some(s) = s.strip_prefix("__R") {
         // On OSX, symbols are prefixed with an extra _
-        inner = &s[3..];
+        s
     } else {
         return Err(ParseError::Invalid);
     }
