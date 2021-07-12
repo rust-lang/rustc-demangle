@@ -53,8 +53,8 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ParseError> {
     }
 
     // Paths always start with uppercase characters.
-    match inner.as_bytes()[0] {
-        b'A'..=b'Z' => {}
+    match inner.bytes().next() {
+        Some(b'A'..=b'Z') => {}
         _ => return Err(ParseError::Invalid),
     }
 
