@@ -99,7 +99,7 @@ pub fn demangle(s: &str) -> Result<(Demangle<'_>, &str), ()> {
 
 // Rust hashes are hex digits with an `h` prepended.
 fn is_rust_hash(s: &str) -> bool {
-    s.starts_with('h') && s[1..].chars().all(|c| c.is_digit(16))
+    s.starts_with('h') && s[1..].bytes().all(|c| (c as char).is_digit(16))
 }
 
 impl<'a> fmt::Display for Demangle<'a> {
@@ -116,7 +116,7 @@ impl<'a> fmt::Display for Demangle<'a> {
             rest = &rest[..i];
             // Skip printing the hash if alternate formatting
             // was requested.
-            if f.alternate() && element + 1 == self.elements && is_rust_hash(&rest) {
+            if f.alternate() && element + 1 == self.elements && is_rust_hash(rest) {
                 break;
             }
             if element != 0 {
