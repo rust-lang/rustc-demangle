@@ -69,15 +69,16 @@ pub fn demangle(s: &str) -> Result<(Demangle<'_>, &str), ()> {
     }
 
     let mut elements = 0;
-    let mut chars = inner.chars();
+    // we checked, that string is in ascii range
+    let mut chars = inner.bytes();
     let mut c = chars.next().ok_or(())?;
-    while c != 'E' {
+    while c != b'E' {
         // Decode an identifier element's length.
-        if !c.is_digit(10) {
+        if !(c as char).is_digit(10) {
             return Err(());
         }
         let mut len = 0usize;
-        while let Some(d) = c.to_digit(10) {
+        while let Some(d) = (c as char).to_digit(10) {
             len = len
                 .checked_mul(10)
                 .and_then(|len| len.checked_add(d as usize))
@@ -94,7 +95,11 @@ pub fn demangle(s: &str) -> Result<(Demangle<'_>, &str), ()> {
         elements += 1;
     }
 
-    Ok((Demangle { inner, elements }, chars.as_str()))
+    let chars_left = chars.count();
+    Ok((
+        Demangle { inner, elements },
+        &inner[inner.len() - chars_left..],
+    ))
 }
 
 // Rust hashes are hex digits with an `h` prepended.
