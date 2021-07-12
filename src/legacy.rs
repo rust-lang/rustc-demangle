@@ -50,15 +50,15 @@ pub fn demangle(s: &str) -> Result<(Demangle<'_>, &str), ()> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
-    let inner = if s.starts_with("_ZN") {
-        &s[3..]
-    } else if s.starts_with("ZN") {
+    let inner = if let Some(s) = s.strip_prefix("_ZN") {
+        s
+    } else if let Some(s) = s.strip_prefix("ZN") {
         // On Windows, dbghelp strips leading underscores, so we accept "ZN...E"
         // form too.
-        &s[2..]
-    } else if s.starts_with("__ZN") {
+        s
+    } else if let Some(s) = s.strip_prefix("__ZN") {
         // On OSX, symbols are prefixed with an extra _
-        &s[4..]
+        s
     } else {
         return Err(());
     };
