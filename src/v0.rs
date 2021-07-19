@@ -606,8 +606,19 @@ impl<'s> Parser<'s> {
 }
 
 struct Printer<'a, 'b: 'a, 's> {
+    /// The input parser to demangle from, or `Err(Invalid)` if any error was
+    /// encountered (in order to disallow further likely-incorrect demangling).
+    ///
+    /// See also the documentation on the `invalid!` and `parse!` macros below.
     parser: Result<Parser<'s>, Invalid>,
+
+    /// The output formatter to demangle to.
     out: &'a mut fmt::Formatter<'b>,
+
+    /// Cumulative number of lifetimes bound by `for<...>` binders ('G'),
+    /// anywhere "around" the current entity (e.g. type) being demangled.
+    ///
+    /// See also the documentation on the `Printer::in_binder` method.
     bound_lifetime_depth: u32,
 }
 
