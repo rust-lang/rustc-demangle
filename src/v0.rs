@@ -568,6 +568,8 @@ impl<'s> Parser<'s> {
 
         if self.eat(b'B') {
             self.backref()?;
+
+            self.pop_depth();
             return Ok(());
         }
 
@@ -575,6 +577,7 @@ impl<'s> Parser<'s> {
 
         if ty_tag == b'p' {
             // We don't encode the type if the value is a placeholder.
+            self.pop_depth();
             return Ok(());
         }
 
@@ -650,16 +653,6 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             parser: self.parser_mut().and_then(|p| p.backref()),
             out: self.out,
             bound_lifetime_depth: self.bound_lifetime_depth,
-        }
-    }
-
-    fn push_depth(&mut self) -> bool {
-        match self.parser {
-            Err(_) => false,
-            Ok(ref mut parser) => {
-                let _ = parser.push_depth();
-                true
-            }
         }
     }
 
@@ -740,6 +733,8 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     }
 
     fn print_path(&mut self, in_value: bool) -> fmt::Result {
+        parse!(self, push_depth);
+
         let tag = parse!(self, next);
         match tag {
             b'C' => {
@@ -813,14 +808,12 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 self.out.write_str(">")?;
             }
             b'B' => {
-                let mut backref_printer = self.backref_printer();
-                backref_printer.print_path(in_value)?;
-                if backref_printer.parser.is_err() {
-                    return Err(fmt::Error);
-                }
+                self.backref_printer().print_path(in_value)?;
             }
             _ => invalid!(self),
         }
+
+        self.pop_depth();
         Ok(())
     }
 
@@ -842,7 +835,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             return self.out.write_str(ty);
         }
 
-        self.push_depth();
+        parse!(self, push_depth);
 
         match tag {
             b'R' | b'Q' => {
@@ -1009,8 +1002,13 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     }
 
     fn print_const(&mut self) -> fmt::Result {
+        parse!(self, push_depth);
+
         if self.eat(b'B') {
-            return self.backref_printer().print_const();
+            self.backref_printer().print_const()?;
+
+            self.pop_depth();
+            return Ok(());
         }
 
         let ty_tag = parse!(self, next);
@@ -1018,6 +1016,8 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         if ty_tag == b'p' {
             // We don't encode the type if the value is a placeholder.
             self.out.write_str("_")?;
+
+            self.pop_depth();
             return Ok(());
         }
 
@@ -1041,6 +1041,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             self.out.write_str(ty)?;
         }
 
+        self.pop_depth();
         Ok(())
     }
 
@@ -1809,5 +1810,38 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRB_E"
 
             t_nohash!(&sym, expected);
         }
+    }
+
+    #[test]
+    fn recursion_limit_backref_free_bypass() {
+        // NOTE(eddyb) this test checks that long symbols cannot bypass the
+        // recursion limit by not using backrefs, and cause a stack overflow.
+
+        // This value was chosen to be high enough that stack overflows were
+        // observed even with `cargo test --release`.
+        let depth = 100_000;
+
+        // In order to hide the long mangling from the initial "shallow" parse,
+        // it's nested in an identifier (crate name), preceding its use.
+        let mut sym = format!("_RIC{}", depth);
+        let backref_start = sym.len() - 2;
+        for _ in 0..depth {
+            sym.push('R');
+        }
+
+        // Write a backref to just after the length of the identifier.
+        sym.push('B');
+        sym.push(char::from_digit((backref_start - 1) as u32, 36).unwrap());
+        sym.push('_');
+
+        // Close the `I` at the start.
+        sym.push('E');
+
+        let demangled = format!("{:#}", ::demangle(&sym));
+
+        // NOTE(eddyb) the `?` indicates that a parse error was encountered.
+        // FIXME(eddyb) replace `v0::Invalid` with a proper `v0::ParseError`,
+        // that could show e.g. `<recursion limit reached>` instead of `?`.
+        assert_eq!(demangled.replace(&['R', '&'][..], ""), "::<?>");
     }
 }
