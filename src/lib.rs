@@ -418,9 +418,17 @@ mod tests {
 
     #[test]
     fn limit_recursion() {
-        use std::fmt::Write;
-        let mut s = String::new();
-        assert!(write!(s, "{}", super::demangle("_RNvB_1a")).is_err());
+        // NOTE(eddyb) the `?` indicate that a parse error was encountered.
+        // FIXME(eddyb) replace `v0::Invalid` with a proper `v0::ParseError`,
+        // that could show e.g. `<recursion limit reached>` instead of `?`.
+        assert_eq!(
+            super::demangle("_RNvB_1a").to_string().replace("::a", ""),
+            "?"
+        );
+        assert_eq!(
+            super::demangle("_RMC0RB2_").to_string().replace("&", ""),
+            "<?>"
+        );
     }
 
     #[test]
