@@ -485,12 +485,12 @@ impl<'s> Parser<'s> {
             }
             _ => return Err(Invalid),
         }
+
+        self.pop_depth();
         Ok(())
     }
 
     fn skip_generic_arg(&mut self) -> Result<(), Invalid> {
-        self.push_depth()?;
-
         if self.eat(b'L') {
             self.integer_62()?;
             Ok(())
@@ -563,6 +563,8 @@ impl<'s> Parser<'s> {
                 self.skip_path()?;
             }
         }
+
+        self.pop_depth();
         Ok(())
     }
 
@@ -599,6 +601,8 @@ impl<'s> Parser<'s> {
         }
 
         self.hex_nibbles()?;
+
+        self.pop_depth();
         Ok(())
     }
 }
@@ -1790,6 +1794,29 @@ R\u{003b}"
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRB_E"
             )
         );
+    }
+
+    #[test]
+    fn recursion_limit_leaks() {
+        // NOTE(eddyb) this test checks that both paths and types support the
+        // recursion limit correctly, i.e. matching `push_depth` and `pop_depth`,
+        // and don't leak "recursion levels" and trip the limit.
+        // The test inputs are generated on the fly, using a repeated pattern,
+        // as hardcoding the actual strings would be too verbose.
+        // Also, `MAX_DEPTH` can be directly used, instead of assuming its value.
+        for &(sym_leaf, expected_leaf) in &[("p", "_"), ("Rp", "&_"), ("C1x", "x")] {
+            let mut sym = format!("_RIC0p");
+            let mut expected = format!("::<_");
+            for _ in 0..(super::MAX_DEPTH * 2) {
+                sym.push_str(sym_leaf);
+                expected.push_str(", ");
+                expected.push_str(expected_leaf);
+            }
+            sym.push('E');
+            expected.push('>');
+
+            t_nohash!(&sym, expected);
+        }
     }
 }
 
