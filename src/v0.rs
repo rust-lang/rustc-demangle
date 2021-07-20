@@ -4,7 +4,10 @@ use core::fmt;
 #[allow(unused_macros)]
 macro_rules! write {
     ($($ignored:tt)*) => {
-        compile_error!("use `fmt::Trait::fmt(&value, self.out)` instead of write!")
+        compile_error!(
+            "use `self.print(value)` or `fmt::Trait::fmt(&value, self.out)`, \
+             instead of `write!(self.out, \"{...}\", value)`"
+        )
     };
 }
 
@@ -629,7 +632,7 @@ struct Printer<'a, 'b: 'a, 's> {
 macro_rules! invalid {
     ($printer:ident) => {{
         $printer.parser = Err(Invalid);
-        return $printer.out.write_str("?");
+        return $printer.print("?");
     }};
 }
 
@@ -673,24 +676,29 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         }
     }
 
+    /// Output the given value to `self.out` (using `fmt::Display` formatting).
+    fn print(&mut self, x: impl fmt::Display) -> fmt::Result {
+        fmt::Display::fmt(&x, self.out)
+    }
+
     /// Print the lifetime according to the previously decoded index.
     /// An index of `0` always refers to `'_`, but starting with `1`,
     /// indices refer to late-bound lifetimes introduced by a binder.
     fn print_lifetime_from_index(&mut self, lt: u64) -> fmt::Result {
-        self.out.write_str("'")?;
+        self.print("'")?;
         if lt == 0 {
-            return self.out.write_str("_");
+            return self.print("_");
         }
         match (self.bound_lifetime_depth as u64).checked_sub(lt) {
             Some(depth) => {
                 // Try to print lifetimes alphabetically first.
                 if depth < 26 {
                     let c = (b'a' + depth as u8) as char;
-                    fmt::Display::fmt(&c, self.out)
+                    self.print(c)
                 } else {
                     // Use `'_123` after running out of letters.
-                    self.out.write_str("_")?;
-                    fmt::Display::fmt(&depth, self.out)
+                    self.print("_")?;
+                    self.print(depth)
                 }
             }
             None => invalid!(self),
@@ -706,15 +714,15 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     {
         let bound_lifetimes = parse!(self, opt_integer_62(b'G'));
         if bound_lifetimes > 0 {
-            self.out.write_str("for<")?;
+            self.print("for<")?;
             for i in 0..bound_lifetimes {
                 if i > 0 {
-                    self.out.write_str(", ")?;
+                    self.print(", ")?;
                 }
                 self.bound_lifetime_depth += 1;
                 self.print_lifetime_from_index(1)?;
             }
-            self.out.write_str("> ")?;
+            self.print("> ")?;
         }
 
         let r = f(self);
@@ -735,7 +743,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         let mut i = 0;
         while self.parser.is_ok() && !self.eat(b'E') {
             if i > 0 {
-                self.out.write_str(sep)?;
+                self.print(sep)?;
             }
             f(self)?;
             i += 1;
@@ -752,11 +760,11 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 let dis = parse!(self, disambiguator);
                 let name = parse!(self, ident);
 
-                fmt::Display::fmt(&name, self.out)?;
+                self.print(name)?;
                 if !self.out.alternate() {
-                    self.out.write_str("[")?;
+                    self.print("[")?;
                     fmt::LowerHex::fmt(&dis, self.out)?;
-                    self.out.write_str("]")?;
+                    self.print("]")?;
                 }
             }
             b'N' => {
@@ -770,26 +778,26 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 match ns {
                     // Special namespaces, like closures and shims.
                     Some(ns) => {
-                        self.out.write_str("::{")?;
+                        self.print("::{")?;
                         match ns {
-                            'C' => self.out.write_str("closure")?,
-                            'S' => self.out.write_str("shim")?,
-                            _ => fmt::Display::fmt(&ns, self.out)?,
+                            'C' => self.print("closure")?,
+                            'S' => self.print("shim")?,
+                            _ => self.print(ns)?,
                         }
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
-                            self.out.write_str(":")?;
-                            fmt::Display::fmt(&name, self.out)?;
+                            self.print(":")?;
+                            self.print(name)?;
                         }
-                        self.out.write_str("#")?;
-                        fmt::Display::fmt(&dis, self.out)?;
-                        self.out.write_str("}")?;
+                        self.print("#")?;
+                        self.print(dis)?;
+                        self.print("}")?;
                     }
 
                     // Implementation-specific/unspecified namespaces.
                     None => {
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
-                            self.out.write_str("::")?;
-                            fmt::Display::fmt(&name, self.out)?;
+                            self.print("::")?;
+                            self.print(name)?;
                         }
                     }
                 }
@@ -801,22 +809,22 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     parse!(self, skip_path);
                 }
 
-                self.out.write_str("<")?;
+                self.print("<")?;
                 self.print_type()?;
                 if tag != b'M' {
-                    self.out.write_str(" as ")?;
+                    self.print(" as ")?;
                     self.print_path(false)?;
                 }
-                self.out.write_str(">")?;
+                self.print(">")?;
             }
             b'I' => {
                 self.print_path(in_value)?;
                 if in_value {
-                    self.out.write_str("::")?;
+                    self.print("::")?;
                 }
-                self.out.write_str("<")?;
+                self.print("<")?;
                 self.print_sep_list(Self::print_generic_arg, ", ")?;
-                self.out.write_str(">")?;
+                self.print(">")?;
             }
             b'B' => {
                 self.backref_printer().print_path(in_value)?;
@@ -843,53 +851,53 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         let tag = parse!(self, next);
 
         if let Some(ty) = basic_type(tag) {
-            return self.out.write_str(ty);
+            return self.print(ty);
         }
 
         parse!(self, push_depth);
 
         match tag {
             b'R' | b'Q' => {
-                self.out.write_str("&")?;
+                self.print("&")?;
                 if self.eat(b'L') {
                     let lt = parse!(self, integer_62);
                     if lt != 0 {
                         self.print_lifetime_from_index(lt)?;
-                        self.out.write_str(" ")?;
+                        self.print(" ")?;
                     }
                 }
                 if tag != b'R' {
-                    self.out.write_str("mut ")?;
+                    self.print("mut ")?;
                 }
                 self.print_type()?;
             }
 
             b'P' | b'O' => {
-                self.out.write_str("*")?;
+                self.print("*")?;
                 if tag != b'P' {
-                    self.out.write_str("mut ")?;
+                    self.print("mut ")?;
                 } else {
-                    self.out.write_str("const ")?;
+                    self.print("const ")?;
                 }
                 self.print_type()?;
             }
 
             b'A' | b'S' => {
-                self.out.write_str("[")?;
+                self.print("[")?;
                 self.print_type()?;
                 if tag == b'A' {
-                    self.out.write_str("; ")?;
+                    self.print("; ")?;
                     self.print_const()?;
                 }
-                self.out.write_str("]")?;
+                self.print("]")?;
             }
             b'T' => {
-                self.out.write_str("(")?;
+                self.print("(")?;
                 let count = self.print_sep_list(Self::print_type, ", ")?;
                 if count == 1 {
-                    self.out.write_str(",")?;
+                    self.print(",")?;
                 }
-                self.out.write_str(")")?;
+                self.print(")")?;
             }
             b'F' => self.in_binder(|this| {
                 let is_unsafe = this.eat(b'U');
@@ -908,39 +916,39 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 };
 
                 if is_unsafe {
-                    this.out.write_str("unsafe ")?;
+                    this.print("unsafe ")?;
                 }
 
                 if let Some(abi) = abi {
-                    this.out.write_str("extern \"")?;
+                    this.print("extern \"")?;
 
                     // If the ABI had any `-`, they were replaced with `_`,
                     // so the parts between `_` have to be re-joined with `-`.
                     let mut parts = abi.split('_');
-                    this.out.write_str(parts.next().unwrap())?;
+                    this.print(parts.next().unwrap())?;
                     for part in parts {
-                        this.out.write_str("-")?;
-                        this.out.write_str(part)?;
+                        this.print("-")?;
+                        this.print(part)?;
                     }
 
-                    this.out.write_str("\" ")?;
+                    this.print("\" ")?;
                 }
 
-                this.out.write_str("fn(")?;
+                this.print("fn(")?;
                 this.print_sep_list(Self::print_type, ", ")?;
-                this.out.write_str(")")?;
+                this.print(")")?;
 
                 if this.eat(b'u') {
                     // Skip printing the return type if it's 'u', i.e. `()`.
                 } else {
-                    this.out.write_str(" -> ")?;
+                    this.print(" -> ")?;
                     this.print_type()?;
                 }
 
                 Ok(())
             })?,
             b'D' => {
-                self.out.write_str("dyn ")?;
+                self.print("dyn ")?;
                 self.in_binder(|this| {
                     this.print_sep_list(Self::print_dyn_trait, " + ")?;
                     Ok(())
@@ -951,7 +959,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 }
                 let lt = parse!(self, integer_62);
                 if lt != 0 {
-                    self.out.write_str(" + ")?;
+                    self.print(" + ")?;
                     self.print_lifetime_from_index(lt)?;
                 }
             }
@@ -979,7 +987,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             self.backref_printer().print_path_maybe_open_generics()
         } else if self.eat(b'I') {
             self.print_path(false)?;
-            self.out.write_str("<")?;
+            self.print("<")?;
             self.print_sep_list(Self::print_generic_arg, ", ")?;
             Ok(true)
         } else {
@@ -993,20 +1001,20 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 
         while self.eat(b'p') {
             if !open {
-                self.out.write_str("<")?;
+                self.print("<")?;
                 open = true;
             } else {
-                self.out.write_str(", ")?;
+                self.print(", ")?;
             }
 
             let name = parse!(self, ident);
-            fmt::Display::fmt(&name, self.out)?;
-            self.out.write_str(" = ")?;
+            self.print(name)?;
+            self.print(" = ")?;
             self.print_type()?;
         }
 
         if open {
-            self.out.write_str(">")?;
+            self.print(">")?;
         }
 
         Ok(())
@@ -1026,7 +1034,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 
         if ty_tag == b'p' {
             // We don't encode the type if the value is a placeholder.
-            self.out.write_str("_")?;
+            self.print("_")?;
 
             self.pop_depth();
             return Ok(());
@@ -1047,9 +1055,9 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         };
 
         if !self.out.alternate() {
-            self.out.write_str(": ")?;
+            self.print(": ")?;
             let ty = basic_type(ty_tag).unwrap();
-            self.out.write_str(ty)?;
+            self.print(ty)?;
         }
 
         self.pop_depth();
@@ -1061,20 +1069,20 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 
         // Print anything that doesn't fit in `u64` verbatim.
         if hex.len() > 16 {
-            self.out.write_str("0x")?;
-            return self.out.write_str(hex);
+            self.print("0x")?;
+            return self.print(hex);
         }
 
         let mut v = 0;
         for c in hex.chars() {
             v = (v << 4) | (c.to_digit(16).unwrap() as u64);
         }
-        fmt::Display::fmt(&v, self.out)
+        self.print(v)
     }
 
     fn print_const_int(&mut self) -> fmt::Result {
         if self.eat(b'n') {
-            self.out.write_str("-")?;
+            self.print("-")?;
         }
 
         self.print_const_uint()
@@ -1082,8 +1090,8 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 
     fn print_const_bool(&mut self) -> fmt::Result {
         match parse!(self, hex_nibbles).as_bytes() {
-            b"0" => self.out.write_str("false"),
-            b"1" => self.out.write_str("true"),
+            b"0" => self.print("false"),
+            b"1" => self.print("true"),
             _ => invalid!(self),
         }
     }
