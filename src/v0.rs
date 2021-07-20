@@ -1,17 +1,16 @@
 use core::char;
 use core::fmt;
-use core::fmt::{Display, Write};
+
+#[allow(unused_macros)]
+macro_rules! write {
+    ($($ignored:tt)*) => {
+        compile_error!("use `fmt::Trait::fmt(&value, self.out)` instead of write!")
+    };
+}
 
 // Maximum recursion depth when parsing symbols before we just bail out saying
 // "this symbol is invalid"
 const MAX_DEPTH: u32 = 500;
-
-// Approximately the maximum size of the symbol that we'll print. This is
-// approximate because it only limits calls writing to `LimitedFormatter`, but
-// not all writes exclusively go through `LimitedFormatter`. Some writes go
-// directly to the underlying formatter, but when that happens we always write
-// at least a little to the `LimitedFormatter`.
-const MAX_APPROX_SIZE: usize = 1_000_000;
 
 /// Representation of a demangled symbol name.
 pub struct Demangle<'a> {
@@ -68,19 +67,15 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     Ok((Demangle { inner }, &parser.sym[parser.next..]))
 }
 
-impl<'s> Display for Demangle<'s> {
+impl<'s> fmt::Display for Demangle<'s> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut remaining = MAX_APPROX_SIZE;
         let mut printer = Printer {
             parser: Ok(Parser {
                 sym: self.inner,
                 next: 0,
                 depth: 0,
             }),
-            out: LimitedFormatter {
-                remaining: &mut remaining,
-                inner: f,
-            },
+            out: f,
             bound_lifetime_depth: 0,
         };
         printer.print_path(true)
@@ -222,7 +217,7 @@ impl<'s> Ident<'s> {
     }
 }
 
-impl<'s> Display for Ident<'s> {
+impl<'s> fmt::Display for Ident<'s> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.try_small_punycode_decode(|chars| {
             for &c in chars {
@@ -605,7 +600,7 @@ impl<'s> Parser<'s> {
 
 struct Printer<'a, 'b: 'a, 's> {
     parser: Result<Parser<'s>, Invalid>,
-    out: LimitedFormatter<'a, 'b>,
+    out: &'a mut fmt::Formatter<'b>,
     bound_lifetime_depth: u32,
 }
 
@@ -649,10 +644,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     fn backref_printer<'c>(&'c mut self) -> Printer<'c, 'b, 's> {
         Printer {
             parser: self.parser_mut().and_then(|p| p.backref()),
-            out: LimitedFormatter {
-                remaining: self.out.remaining,
-                inner: self.out.inner,
-            },
+            out: self.out,
             bound_lifetime_depth: self.bound_lifetime_depth,
         }
     }
@@ -686,11 +678,11 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 // Try to print lifetimes alphabetically first.
                 if depth < 26 {
                     let c = (b'a' + depth as u8) as char;
-                    c.fmt(self.out.inner)
+                    fmt::Display::fmt(&c, self.out)
                 } else {
                     // Use `'_123` after running out of letters.
                     self.out.write_str("_")?;
-                    depth.fmt(self.out.inner)
+                    fmt::Display::fmt(&depth, self.out)
                 }
             }
             None => invalid!(self),
@@ -750,10 +742,10 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 let dis = parse!(self, disambiguator);
                 let name = parse!(self, ident);
 
-                name.fmt(self.out.inner)?;
-                if !self.out.inner.alternate() {
+                fmt::Display::fmt(&name, self.out)?;
+                if !self.out.alternate() {
                     self.out.write_str("[")?;
-                    fmt::LowerHex::fmt(&dis, self.out.inner)?;
+                    fmt::LowerHex::fmt(&dis, self.out)?;
                     self.out.write_str("]")?;
                 }
             }
@@ -772,14 +764,14 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                         match ns {
                             'C' => self.out.write_str("closure")?,
                             'S' => self.out.write_str("shim")?,
-                            _ => ns.fmt(self.out.inner)?,
+                            _ => fmt::Display::fmt(&ns, self.out)?,
                         }
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str(":")?;
-                            name.fmt(self.out.inner)?;
+                            fmt::Display::fmt(&name, self.out)?;
                         }
                         self.out.write_str("#")?;
-                        dis.fmt(self.out.inner)?;
+                        fmt::Display::fmt(&dis, self.out)?;
                         self.out.write_str("}")?;
                     }
 
@@ -787,7 +779,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     None => {
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str("::")?;
-                            name.fmt(self.out.inner)?;
+                            fmt::Display::fmt(&name, self.out)?;
                         }
                     }
                 }
@@ -1000,7 +992,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             }
 
             let name = parse!(self, ident);
-            name.fmt(self.out.inner)?;
+            fmt::Display::fmt(&name, self.out)?;
             self.out.write_str(" = ")?;
             self.print_type()?;
         }
@@ -1039,7 +1031,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             _ => invalid!(self),
         };
 
-        if !self.out.inner.alternate() {
+        if !self.out.alternate() {
             self.out.write_str(": ")?;
             let ty = basic_type(ty_tag).unwrap();
             self.out.write_str(ty)?;
@@ -1061,7 +1053,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         for c in hex.chars() {
             v = (v << 4) | (c.to_digit(16).unwrap() as u64);
         }
-        v.fmt(self.out.inner)
+        fmt::Display::fmt(&v, self.out)
     }
 
     fn print_const_int(&mut self) -> fmt::Result {
@@ -1093,7 +1085,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             v = (v << 4) | (c.to_digit(16).unwrap() as u32);
         }
         if let Some(c) = char::from_u32(v) {
-            write!(self.out, "{:?}", c)
+            fmt::Debug::fmt(&c, self.out)
         } else {
             invalid!(self)
         }
@@ -1790,22 +1782,5 @@ R\u{003b}"
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRB_E"
             )
         );
-    }
-}
-
-struct LimitedFormatter<'a, 'b> {
-    remaining: &'a mut usize,
-    inner: &'a mut fmt::Formatter<'b>,
-}
-
-impl Write for LimitedFormatter<'_, '_> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        match self.remaining.checked_sub(s.len()) {
-            Some(amt) => {
-                *self.remaining = amt;
-                self.inner.write_str(s)
-            }
-            None => Err(fmt::Error),
-        }
     }
 }

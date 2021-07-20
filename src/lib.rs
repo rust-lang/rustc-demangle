@@ -33,7 +33,7 @@ extern crate std;
 mod legacy;
 mod v0;
 
-use core::fmt;
+use core::fmt::{self, Write as _};
 
 /// Representation of a demangled symbol name.
 pub struct Demangle<'a> {
@@ -176,12 +176,51 @@ fn is_ascii_punctuation(c: char) -> bool {
     }
 }
 
+impl<'a> fmt::Display for DemangleStyle<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            DemangleStyle::Legacy(ref d) => fmt::Display::fmt(d, f),
+            DemangleStyle::V0(ref d) => fmt::Display::fmt(d, f),
+        }
+    }
+}
+
+// Maximum size of the symbol that we'll print.
+const MAX_SIZE: usize = 1_000_000;
+
+struct LimitedFmtWriter<F> {
+    remaining: usize,
+    inner: F,
+}
+
+impl<F: fmt::Write> fmt::Write for LimitedFmtWriter<F> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let remaining = self.remaining.checked_sub(s.len());
+        self.remaining = remaining.unwrap_or(0);
+
+        match remaining {
+            Some(_) => self.inner.write_str(s),
+            None => Err(fmt::Error),
+        }
+    }
+}
+
 impl<'a> fmt::Display for Demangle<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let alternate = f.alternate();
+        let mut f = LimitedFmtWriter {
+            remaining: MAX_SIZE,
+            inner: f,
+        };
         match self.style {
             None => f.write_str(self.original)?,
-            Some(DemangleStyle::Legacy(ref d)) => fmt::Display::fmt(d, f)?,
-            Some(DemangleStyle::V0(ref d)) => fmt::Display::fmt(d, f)?,
+            Some(ref d) => {
+                if alternate {
+                    write!(f, "{:#}", d)?;
+                } else {
+                    write!(f, "{}", d)?;
+                }
+            }
         }
         f.write_str(self.suffix)
     }
