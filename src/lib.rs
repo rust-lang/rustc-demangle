@@ -441,5 +441,8 @@ mod tests {
             super::demangle("RYFG_FGyyEvRYFF_EvRYFFEvERLB_B_B_ERLRjB_B_B_")
         )
         .is_err());
+        // NOTE(eddyb) somewhat reduced version of the above, effectively
+        // `<for<...> fn()>` with a larger number of lifetimes in `...`.
+        assert!(write!(s, "{}", super::demangle("_RMC0FGZZZ_Eu")).is_err());
     }
 }

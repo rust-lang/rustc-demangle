@@ -1,5 +1,4 @@
-use core::char;
-use core::fmt;
+use core::{char, fmt, mem};
 
 #[allow(unused_macros)]
 macro_rules! write {
@@ -55,16 +54,27 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
     }
 
     // Verify that the symbol is indeed a valid path.
+    let try_parse_path = |parser| {
+        let mut dummy_printer = Printer {
+            parser: Ok(parser),
+            out: None,
+            bound_lifetime_depth: 0,
+        };
+        dummy_printer
+            .print_path(false)
+            .expect("`fmt::Error`s should be impossible without a `fmt::Formatter`");
+        dummy_printer.parser
+    };
     let mut parser = Parser {
         sym: inner,
         next: 0,
         depth: 0,
     };
-    parser.skip_path()?;
+    parser = try_parse_path(parser)?;
 
     // Instantiating crate (paths always start with uppercase characters).
     if let Some(&(b'A'..=b'Z')) = parser.sym.as_bytes().get(parser.next) {
-        parser.skip_path()?;
+        parser = try_parse_path(parser)?;
     }
 
     Ok((Demangle { inner }, &parser.sym[parser.next..]))
@@ -78,7 +88,7 @@ impl<'s> fmt::Display for Demangle<'s> {
                 next: 0,
                 depth: 0,
             }),
-            out: f,
+            out: Some(f),
             bound_lifetime_depth: 0,
         };
         printer.print_path(true)
@@ -442,170 +452,6 @@ impl<'s> Parser<'s> {
             })
         }
     }
-
-    fn skip_path(&mut self) -> Result<(), Invalid> {
-        self.push_depth()?;
-
-        match self.next()? {
-            b'C' => {
-                self.disambiguator()?;
-                self.ident()?;
-            }
-            b'N' => {
-                self.namespace()?;
-                self.skip_path()?;
-                self.disambiguator()?;
-                self.ident()?;
-            }
-            b'M' => {
-                self.disambiguator()?;
-                self.skip_path()?;
-                self.skip_type()?;
-            }
-            b'X' => {
-                self.disambiguator()?;
-                self.skip_path()?;
-                self.skip_type()?;
-                self.skip_path()?;
-            }
-            b'Y' => {
-                self.skip_type()?;
-                self.skip_path()?;
-            }
-            b'I' => {
-                self.skip_path()?;
-                while !self.eat(b'E') {
-                    self.skip_generic_arg()?;
-                }
-            }
-            b'B' => {
-                self.backref()?;
-            }
-            _ => return Err(Invalid),
-        }
-
-        self.pop_depth();
-        Ok(())
-    }
-
-    fn skip_generic_arg(&mut self) -> Result<(), Invalid> {
-        if self.eat(b'L') {
-            self.integer_62()?;
-            Ok(())
-        } else if self.eat(b'K') {
-            self.skip_const()
-        } else {
-            self.skip_type()
-        }
-    }
-
-    fn skip_type(&mut self) -> Result<(), Invalid> {
-        self.push_depth()?;
-
-        match self.next()? {
-            tag if basic_type(tag).is_some() => {}
-
-            b'R' | b'Q' => {
-                if self.eat(b'L') {
-                    self.integer_62()?;
-                }
-                self.skip_type()?;
-            }
-            b'P' | b'O' | b'S' => self.skip_type()?,
-            b'A' => {
-                self.skip_type()?;
-                self.skip_const()?;
-            }
-            b'T' => {
-                while !self.eat(b'E') {
-                    self.skip_type()?;
-                }
-            }
-            b'F' => {
-                let _binder = self.opt_integer_62(b'G')?;
-                let _is_unsafe = self.eat(b'U');
-                if self.eat(b'K') {
-                    let c_abi = self.eat(b'C');
-                    if !c_abi {
-                        let abi = self.ident()?;
-                        if abi.ascii.is_empty() || !abi.punycode.is_empty() {
-                            return Err(Invalid);
-                        }
-                    }
-                }
-                while !self.eat(b'E') {
-                    self.skip_type()?;
-                }
-                self.skip_type()?;
-            }
-            b'D' => {
-                let _binder = self.opt_integer_62(b'G')?;
-                while !self.eat(b'E') {
-                    self.skip_path()?;
-                    while self.eat(b'p') {
-                        self.ident()?;
-                        self.skip_type()?;
-                    }
-                }
-                if !self.eat(b'L') {
-                    return Err(Invalid);
-                }
-                self.integer_62()?;
-            }
-            b'B' => {
-                self.backref()?;
-            }
-            _ => {
-                // Go back to the tag, so `skip_path` also sees it.
-                self.next -= 1;
-                self.skip_path()?;
-            }
-        }
-
-        self.pop_depth();
-        Ok(())
-    }
-
-    fn skip_const(&mut self) -> Result<(), Invalid> {
-        self.push_depth()?;
-
-        if self.eat(b'B') {
-            self.backref()?;
-
-            self.pop_depth();
-            return Ok(());
-        }
-
-        let ty_tag = self.next()?;
-
-        if ty_tag == b'p' {
-            // We don't encode the type if the value is a placeholder.
-            self.pop_depth();
-            return Ok(());
-        }
-
-        match ty_tag {
-            // Unsigned integer types.
-            b'h' | b't' | b'm' | b'y' | b'o' | b'j' |
-            // Bool.
-            b'b' |
-            // Char.
-            b'c' => {}
-
-            // Signed integer types.
-            b'a' | b's' | b'l' | b'x' | b'n' | b'i' => {
-                // Negation on signed integers.
-                let _ = self.eat(b'n');
-            }
-
-            _ => return Err(Invalid),
-        }
-
-        self.hex_nibbles()?;
-
-        self.pop_depth();
-        Ok(())
-    }
 }
 
 struct Printer<'a, 'b: 'a, 's> {
@@ -615,11 +461,12 @@ struct Printer<'a, 'b: 'a, 's> {
     /// See also the documentation on the `invalid!` and `parse!` macros below.
     parser: Result<Parser<'s>, Invalid>,
 
-    /// The output formatter to demangle to.
-    out: &'a mut fmt::Formatter<'b>,
+    /// The output formatter to demangle to, or `None` while skipping printing.
+    out: Option<&'a mut fmt::Formatter<'b>>,
 
     /// Cumulative number of lifetimes bound by `for<...>` binders ('G'),
     /// anywhere "around" the current entity (e.g. type) being demangled.
+    /// This value is not tracked while skipping printing, as it'd be unused.
     ///
     /// See also the documentation on the `Printer::in_binder` method.
     bound_lifetime_depth: u32,
@@ -661,13 +508,35 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         self.parser_mut().map(|p| p.eat(b)) == Ok(true)
     }
 
-    /// Return a nested parser for a backref.
-    fn backref_printer<'c>(&'c mut self) -> Printer<'c, 'b, 's> {
-        Printer {
-            parser: self.parser_mut().and_then(|p| p.backref()),
-            out: self.out,
-            bound_lifetime_depth: self.bound_lifetime_depth,
+    /// Skip printing (i.e. `self.out` will be `None`) for the duration of the
+    /// given closure. This should not change parsing behavior, only disable the
+    /// output, but there may be optimizations (such as not traversing backrefs).
+    fn skipping_printing<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut Self) -> fmt::Result,
+    {
+        let orig_out = self.out.take();
+        f(self).expect("`fmt::Error`s should be impossible without a `fmt::Formatter`");
+        self.out = orig_out;
+    }
+
+    /// Print the target of a backref, using the given closure.
+    /// When printing is being skipped, the backref will only be parsed,
+    /// ignoring the backref's target completely.
+    fn print_backref<F>(&mut self, f: F) -> fmt::Result
+    where
+        F: FnOnce(&mut Self) -> fmt::Result,
+    {
+        let backref_parser = self.parser_mut().and_then(|p| p.backref());
+
+        if self.out.is_none() {
+            return Ok(());
         }
+
+        let orig_parser = mem::replace(&mut self.parser, backref_parser);
+        let r = f(self);
+        self.parser = orig_parser;
+        r
     }
 
     fn pop_depth(&mut self) {
@@ -676,15 +545,24 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         }
     }
 
-    /// Output the given value to `self.out` (using `fmt::Display` formatting).
+    /// Output the given value to `self.out` (using `fmt::Display` formatting),
+    /// if printing isn't being skipped.
     fn print(&mut self, x: impl fmt::Display) -> fmt::Result {
-        fmt::Display::fmt(&x, self.out)
+        if let Some(out) = &mut self.out {
+            fmt::Display::fmt(&x, out)?;
+        }
+        Ok(())
     }
 
     /// Print the lifetime according to the previously decoded index.
     /// An index of `0` always refers to `'_`, but starting with `1`,
     /// indices refer to late-bound lifetimes introduced by a binder.
     fn print_lifetime_from_index(&mut self, lt: u64) -> fmt::Result {
+        // Bound lifetimes aren't tracked when skipping printing.
+        if self.out.is_none() {
+            return Ok(());
+        }
+
         self.print("'")?;
         if lt == 0 {
             return self.print("_");
@@ -713,6 +591,12 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         F: FnOnce(&mut Self) -> fmt::Result,
     {
         let bound_lifetimes = parse!(self, opt_integer_62(b'G'));
+
+        // Don't track bound lifetimes when skipping printing.
+        if self.out.is_none() {
+            return f(self);
+        }
+
         if bound_lifetimes > 0 {
             self.print("for<")?;
             for i in 0..bound_lifetimes {
@@ -761,10 +645,12 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 let name = parse!(self, ident);
 
                 self.print(name)?;
-                if !self.out.alternate() {
-                    self.print("[")?;
-                    fmt::LowerHex::fmt(&dis, self.out)?;
-                    self.print("]")?;
+                if let Some(out) = &mut self.out {
+                    if !out.alternate() {
+                        out.write_str("[")?;
+                        fmt::LowerHex::fmt(&dis, out)?;
+                        out.write_str("]")?;
+                    }
                 }
             }
             b'N' => {
@@ -806,7 +692,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 if tag != b'Y' {
                     // Ignore the `impl`'s own path.
                     parse!(self, disambiguator);
-                    parse!(self, skip_path);
+                    self.skipping_printing(|this| this.print_path(false));
                 }
 
                 self.print("<")?;
@@ -827,7 +713,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 self.print(">")?;
             }
             b'B' => {
-                self.backref_printer().print_path(in_value)?;
+                self.print_backref(|this| this.print_path(in_value))?;
             }
             _ => invalid!(self),
         }
@@ -964,7 +850,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 }
             }
             b'B' => {
-                self.backref_printer().print_type()?;
+                self.print_backref(Self::print_type)?;
             }
             _ => {
                 // Go back to the tag, so `print_path` also sees it.
@@ -984,7 +870,14 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     /// open, by omitting the `>`, and return `Ok(true)` in that case.
     fn print_path_maybe_open_generics(&mut self) -> Result<bool, fmt::Error> {
         if self.eat(b'B') {
-            self.backref_printer().print_path_maybe_open_generics()
+            // NOTE(eddyb) the closure may not run if printing is being skipped,
+            // but in that case the returned boolean doesn't matter.
+            let mut open = false;
+            self.print_backref(|this| {
+                open = this.print_path_maybe_open_generics()?;
+                Ok(())
+            })?;
+            Ok(open)
         } else if self.eat(b'I') {
             self.print_path(false)?;
             self.print("<")?;
@@ -1024,7 +917,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         parse!(self, push_depth);
 
         if self.eat(b'B') {
-            self.backref_printer().print_const()?;
+            self.print_backref(Self::print_const)?;
 
             self.pop_depth();
             return Ok(());
@@ -1054,10 +947,12 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             _ => invalid!(self),
         };
 
-        if !self.out.alternate() {
-            self.print(": ")?;
-            let ty = basic_type(ty_tag).unwrap();
-            self.print(ty)?;
+        if let Some(out) = &mut self.out {
+            if !out.alternate() {
+                self.print(": ")?;
+                let ty = basic_type(ty_tag).unwrap();
+                self.print(ty)?;
+            }
         }
 
         self.pop_depth();
@@ -1109,10 +1004,13 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             v = (v << 4) | (c.to_digit(16).unwrap() as u32);
         }
         if let Some(c) = char::from_u32(v) {
-            fmt::Debug::fmt(&c, self.out)
+            if let Some(out) = &mut self.out {
+                fmt::Debug::fmt(&c, out)?;
+            }
         } else {
-            invalid!(self)
+            invalid!(self);
         }
+        Ok(())
     }
 }
 
