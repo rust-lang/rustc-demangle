@@ -1,6 +1,12 @@
 use core::char;
 use core::fmt;
-use core::fmt::Display;
+
+#[allow(unused_macros)]
+macro_rules! write {
+    ($($ignored:tt)*) => {
+        compile_error!("use `fmt::Trait::fmt(&value, self.out)` instead of write!")
+    };
+}
 
 // Maximum recursion depth when parsing symbols before we just bail out saying
 // "this symbol is invalid"
@@ -211,7 +217,7 @@ impl<'s> Ident<'s> {
     }
 }
 
-impl<'s> Display for Ident<'s> {
+impl<'s> fmt::Display for Ident<'s> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.try_small_punycode_decode(|chars| {
             for &c in chars {
@@ -672,11 +678,11 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 // Try to print lifetimes alphabetically first.
                 if depth < 26 {
                     let c = (b'a' + depth as u8) as char;
-                    c.fmt(self.out)
+                    fmt::Display::fmt(&c, self.out)
                 } else {
                     // Use `'_123` after running out of letters.
                     self.out.write_str("_")?;
-                    depth.fmt(self.out)
+                    fmt::Display::fmt(&depth, self.out)
                 }
             }
             None => invalid!(self),
@@ -736,7 +742,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 let dis = parse!(self, disambiguator);
                 let name = parse!(self, ident);
 
-                name.fmt(self.out)?;
+                fmt::Display::fmt(&name, self.out)?;
                 if !self.out.alternate() {
                     self.out.write_str("[")?;
                     fmt::LowerHex::fmt(&dis, self.out)?;
@@ -758,14 +764,14 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                         match ns {
                             'C' => self.out.write_str("closure")?,
                             'S' => self.out.write_str("shim")?,
-                            _ => ns.fmt(self.out)?,
+                            _ => fmt::Display::fmt(&ns, self.out)?,
                         }
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str(":")?;
-                            name.fmt(self.out)?;
+                            fmt::Display::fmt(&name, self.out)?;
                         }
                         self.out.write_str("#")?;
-                        dis.fmt(self.out)?;
+                        fmt::Display::fmt(&dis, self.out)?;
                         self.out.write_str("}")?;
                     }
 
@@ -773,7 +779,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     None => {
                         if !name.ascii.is_empty() || !name.punycode.is_empty() {
                             self.out.write_str("::")?;
-                            name.fmt(self.out)?;
+                            fmt::Display::fmt(&name, self.out)?;
                         }
                     }
                 }
@@ -986,7 +992,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             }
 
             let name = parse!(self, ident);
-            name.fmt(self.out)?;
+            fmt::Display::fmt(&name, self.out)?;
             self.out.write_str(" = ")?;
             self.print_type()?;
         }
@@ -1047,7 +1053,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         for c in hex.chars() {
             v = (v << 4) | (c.to_digit(16).unwrap() as u64);
         }
-        v.fmt(self.out)
+        fmt::Display::fmt(&v, self.out)
     }
 
     fn print_const_int(&mut self) -> fmt::Result {
@@ -1079,7 +1085,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             v = (v << 4) | (c.to_digit(16).unwrap() as u32);
         }
         if let Some(c) = char::from_u32(v) {
-            write!(self.out, "{:?}", c)
+            fmt::Debug::fmt(&c, self.out)
         } else {
             invalid!(self)
         }
