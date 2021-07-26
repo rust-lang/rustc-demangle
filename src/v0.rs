@@ -505,7 +505,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     /// Eat the given character from the parser,
     /// returning `false` if the parser errored.
     fn eat(&mut self, b: u8) -> bool {
-        self.parser_mut().map(|p| p.eat(b)) == Ok(true)
+        self.parser.as_mut().map(|p| p.eat(b)) == Ok(true)
     }
 
     /// Skip printing (i.e. `self.out` will be `None`) for the duration of the
@@ -863,7 +863,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             }
             _ => {
                 // Go back to the tag, so `print_path` also sees it.
-                let _ = self.parser_mut().map(|p| p.next -= 1);
+                let _ = self.parser.as_mut().map(|p| p.next -= 1);
                 self.print_path(false)?;
             }
         }
