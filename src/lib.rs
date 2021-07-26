@@ -30,6 +30,20 @@
 #[macro_use]
 extern crate std;
 
+// HACK(eddyb) helper macros for tests.
+#[cfg(test)]
+macro_rules! assert_contains {
+    ($s:expr, $needle:expr) => {{
+        let (s, needle) = ($s, $needle);
+        assert!(
+            s.contains(needle),
+            "{:?} should've contained {:?}",
+            s,
+            needle
+        );
+    }};
+}
+
 mod legacy;
 mod v0;
 
@@ -90,7 +104,12 @@ pub fn demangle(mut s: &str) -> Demangle {
                 suffix = s;
                 Some(DemangleStyle::V0(d))
             }
-            Err(v0::Invalid) => None,
+            // FIXME(eddyb) would it make sense to treat an unknown-validity
+            // symbol (e.g. one that errored with `RecursedTooDeep`) as
+            // v0-mangled, and have the error show up in the demangling?
+            // (that error already gets past this initial check, and therefore
+            // will show up in the demangling, if hidden behind a backref)
+            Err(v0::ParseError::Invalid) | Err(v0::ParseError::RecursedTooDeep) => None,
         },
     };
 
@@ -418,16 +437,13 @@ mod tests {
 
     #[test]
     fn limit_recursion() {
-        // NOTE(eddyb) the `?` indicate that a parse error was encountered.
-        // FIXME(eddyb) replace `v0::Invalid` with a proper `v0::ParseError`,
-        // that could show e.g. `<recursion limit reached>` instead of `?`.
-        assert_eq!(
-            super::demangle("_RNvB_1a").to_string().replace("::a", ""),
-            "?::?"
+        assert_contains!(
+            super::demangle("_RNvB_1a").to_string(),
+            "{recursion limit reached}"
         );
-        assert_eq!(
-            super::demangle("_RMC0RB2_").to_string().replace("&", ""),
-            "<?>"
+        assert_contains!(
+            super::demangle("_RMC0RB2_").to_string(),
+            "{recursion limit reached}"
         );
     }
 

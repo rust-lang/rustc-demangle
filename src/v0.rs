@@ -19,12 +19,21 @@ pub struct Demangle<'a> {
     inner: &'a str,
 }
 
+#[derive(PartialEq, Eq, Debug)]
+pub enum ParseError {
+    /// Symbol doesn't match the expected `v0` grammar.
+    Invalid,
+
+    /// Parsing the symbol crossed the recursion limit (see `MAX_DEPTH`).
+    RecursedTooDeep,
+}
+
 /// De-mangles a Rust symbol into a more readable version
 ///
 /// This function will take a **mangled** symbol and return a value. When printed,
 /// the de-mangled version will be written. If the symbol does not look like
 /// a mangled symbol, the original value will be written instead.
-pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
+pub fn demangle(s: &str) -> Result<(Demangle, &str), ParseError> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
@@ -39,18 +48,18 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), Invalid> {
         // On OSX, symbols are prefixed with an extra _
         inner = &s[3..];
     } else {
-        return Err(Invalid);
+        return Err(ParseError::Invalid);
     }
 
     // Paths always start with uppercase characters.
     match inner.as_bytes()[0] {
         b'A'..=b'Z' => {}
-        _ => return Err(Invalid),
+        _ => return Err(ParseError::Invalid),
     }
 
     // only work with ascii text
     if inner.bytes().any(|c| c & 0x80 != 0) {
-        return Err(Invalid);
+        return Err(ParseError::Invalid);
     }
 
     // Verify that the symbol is indeed a valid path.
@@ -94,9 +103,6 @@ impl<'s> fmt::Display for Demangle<'s> {
         printer.print_path(true)
     }
 }
-
-#[derive(PartialEq, Eq)]
-pub struct Invalid;
 
 struct Ident<'s> {
     /// ASCII part of the identifier.
@@ -293,10 +299,10 @@ struct Parser<'s> {
 }
 
 impl<'s> Parser<'s> {
-    fn push_depth(&mut self) -> Result<(), Invalid> {
+    fn push_depth(&mut self) -> Result<(), ParseError> {
         self.depth += 1;
         if self.depth > MAX_DEPTH {
-            Err(Invalid)
+            Err(ParseError::RecursedTooDeep)
         } else {
             Ok(())
         }
@@ -319,45 +325,45 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn next(&mut self) -> Result<u8, Invalid> {
-        let b = self.peek().ok_or(Invalid)?;
+    fn next(&mut self) -> Result<u8, ParseError> {
+        let b = self.peek().ok_or(ParseError::Invalid)?;
         self.next += 1;
         Ok(b)
     }
 
-    fn hex_nibbles(&mut self) -> Result<&'s str, Invalid> {
+    fn hex_nibbles(&mut self) -> Result<&'s str, ParseError> {
         let start = self.next;
         loop {
             match self.next()? {
                 b'0'..=b'9' | b'a'..=b'f' => {}
                 b'_' => break,
-                _ => return Err(Invalid),
+                _ => return Err(ParseError::Invalid),
             }
         }
         Ok(&self.sym[start..self.next - 1])
     }
 
-    fn digit_10(&mut self) -> Result<u8, Invalid> {
+    fn digit_10(&mut self) -> Result<u8, ParseError> {
         let d = match self.peek() {
             Some(d @ b'0'..=b'9') => d - b'0',
-            _ => return Err(Invalid),
+            _ => return Err(ParseError::Invalid),
         };
         self.next += 1;
         Ok(d)
     }
 
-    fn digit_62(&mut self) -> Result<u8, Invalid> {
+    fn digit_62(&mut self) -> Result<u8, ParseError> {
         let d = match self.peek() {
             Some(d @ b'0'..=b'9') => d - b'0',
             Some(d @ b'a'..=b'z') => 10 + (d - b'a'),
             Some(d @ b'A'..=b'Z') => 10 + 26 + (d - b'A'),
-            _ => return Err(Invalid),
+            _ => return Err(ParseError::Invalid),
         };
         self.next += 1;
         Ok(d)
     }
 
-    fn integer_62(&mut self) -> Result<u64, Invalid> {
+    fn integer_62(&mut self) -> Result<u64, ParseError> {
         if self.eat(b'_') {
             return Ok(0);
         }
@@ -365,24 +371,24 @@ impl<'s> Parser<'s> {
         let mut x: u64 = 0;
         while !self.eat(b'_') {
             let d = self.digit_62()? as u64;
-            x = x.checked_mul(62).ok_or(Invalid)?;
-            x = x.checked_add(d).ok_or(Invalid)?;
+            x = x.checked_mul(62).ok_or(ParseError::Invalid)?;
+            x = x.checked_add(d).ok_or(ParseError::Invalid)?;
         }
-        x.checked_add(1).ok_or(Invalid)
+        x.checked_add(1).ok_or(ParseError::Invalid)
     }
 
-    fn opt_integer_62(&mut self, tag: u8) -> Result<u64, Invalid> {
+    fn opt_integer_62(&mut self, tag: u8) -> Result<u64, ParseError> {
         if !self.eat(tag) {
             return Ok(0);
         }
-        self.integer_62()?.checked_add(1).ok_or(Invalid)
+        self.integer_62()?.checked_add(1).ok_or(ParseError::Invalid)
     }
 
-    fn disambiguator(&mut self) -> Result<u64, Invalid> {
+    fn disambiguator(&mut self) -> Result<u64, ParseError> {
         self.opt_integer_62(b's')
     }
 
-    fn namespace(&mut self) -> Result<Option<char>, Invalid> {
+    fn namespace(&mut self) -> Result<Option<char>, ParseError> {
         match self.next()? {
             // Special namespaces, like closures and shims.
             ns @ b'A'..=b'Z' => Ok(Some(ns as char)),
@@ -390,15 +396,15 @@ impl<'s> Parser<'s> {
             // Implementation-specific/unspecified namespaces.
             b'a'..=b'z' => Ok(None),
 
-            _ => Err(Invalid),
+            _ => Err(ParseError::Invalid),
         }
     }
 
-    fn backref(&mut self) -> Result<Parser<'s>, Invalid> {
+    fn backref(&mut self) -> Result<Parser<'s>, ParseError> {
         let s_start = self.next - 1;
         let i = self.integer_62()?;
         if i >= s_start as u64 {
-            return Err(Invalid);
+            return Err(ParseError::Invalid);
         }
         let mut new_parser = Parser {
             sym: self.sym,
@@ -409,13 +415,13 @@ impl<'s> Parser<'s> {
         Ok(new_parser)
     }
 
-    fn ident(&mut self) -> Result<Ident<'s>, Invalid> {
+    fn ident(&mut self) -> Result<Ident<'s>, ParseError> {
         let is_punycode = self.eat(b'u');
         let mut len = self.digit_10()? as usize;
         if len != 0 {
             while let Ok(d) = self.digit_10() {
-                len = len.checked_mul(10).ok_or(Invalid)?;
-                len = len.checked_add(d as usize).ok_or(Invalid)?;
+                len = len.checked_mul(10).ok_or(ParseError::Invalid)?;
+                len = len.checked_add(d as usize).ok_or(ParseError::Invalid)?;
             }
         }
 
@@ -423,9 +429,9 @@ impl<'s> Parser<'s> {
         self.eat(b'_');
 
         let start = self.next;
-        self.next = self.next.checked_add(len).ok_or(Invalid)?;
+        self.next = self.next.checked_add(len).ok_or(ParseError::Invalid)?;
         if self.next > self.sym.len() {
-            return Err(Invalid);
+            return Err(ParseError::Invalid);
         }
 
         let ident = &self.sym[start..self.next];
@@ -442,7 +448,7 @@ impl<'s> Parser<'s> {
                 },
             };
             if ident.punycode.is_empty() {
-                return Err(Invalid);
+                return Err(ParseError::Invalid);
             }
             Ok(ident)
         } else {
@@ -455,11 +461,11 @@ impl<'s> Parser<'s> {
 }
 
 struct Printer<'a, 'b: 'a, 's> {
-    /// The input parser to demangle from, or `Err(Invalid)` if any error was
+    /// The input parser to demangle from, or `Err` if any (parse) error was
     /// encountered (in order to disallow further likely-incorrect demangling).
     ///
     /// See also the documentation on the `invalid!` and `parse!` macros below.
-    parser: Result<Parser<'s>, Invalid>,
+    parser: Result<Parser<'s>, ParseError>,
 
     /// The output formatter to demangle to, or `None` while skipping printing.
     out: Option<&'a mut fmt::Formatter<'b>>,
@@ -472,36 +478,53 @@ struct Printer<'a, 'b: 'a, 's> {
     bound_lifetime_depth: u32,
 }
 
-/// Mark the parser as errored, print `?` and return early.
-/// This allows callers to keep printing the approximate
-/// syntax of the path/type/const, despite having errors.
-/// E.g. `Vec<[(A, ?); ?]>` instead of `Vec<[(A, ?`.
+impl ParseError {
+    /// Snippet to print when the error is initially encountered.
+    fn message(&self) -> &str {
+        match self {
+            ParseError::Invalid => "{invalid syntax}",
+            ParseError::RecursedTooDeep => "{recursion limit reached}",
+        }
+    }
+}
+
+/// Mark the parser as errored (with `ParseError::Invalid`), print the
+/// appropriate message (see `ParseError::message`) and return early.
 macro_rules! invalid {
     ($printer:ident) => {{
-        $printer.parser = Err(Invalid);
-        return $printer.print("?");
+        let err = ParseError::Invalid;
+        $printer.print(err.message())?;
+        $printer.parser = Err(err);
+        return Ok(());
     }};
 }
 
 /// Call a parser method (if the parser hasn't errored yet),
-/// and mark the parser as errored if it returns `Err(Invalid)`.
+/// and mark the parser as errored if it returns `Err`.
 ///
-/// If the parser errored, before or now, prints `?`, and
-/// returns early the current function (see `invalid!` above).
+/// If the parser errored, before or now, this returns early,
+/// from the current function, after printing either:
+/// * for a new error, the appropriate message (see `ParseError::message`)
+/// * for an earlier error, only `?` -  this allows callers to keep printing
+///   the approximate syntax of the path/type/const, despite having errors,
+///   e.g. `Vec<[(A, ?); ?]>` instead of `Vec<[(A, ?`
 macro_rules! parse {
     ($printer:ident, $method:ident $(($($arg:expr),*))*) => {
-        match $printer.parser_mut().and_then(|p| p.$method($($($arg),*)*)) {
-            Ok(x) => x,
-            Err(Invalid) => invalid!($printer),
+        match $printer.parser {
+            Ok(ref mut parser) => match parser.$method($($($arg),*)*) {
+                Ok(x) => x,
+                Err(err) => {
+                    $printer.print(err.message())?;
+                    $printer.parser = Err(err);
+                    return Ok(());
+                }
+            }
+            Err(_) => return $printer.print("?"),
         }
     };
 }
 
 impl<'a, 'b, 's> Printer<'a, 'b, 's> {
-    fn parser_mut<'c>(&'c mut self) -> Result<&'c mut Parser<'s>, Invalid> {
-        self.parser.as_mut().map_err(|_| Invalid)
-    }
-
     /// Eat the given character from the parser,
     /// returning `false` if the parser errored.
     fn eat(&mut self, b: u8) -> bool {
@@ -1025,6 +1048,8 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 
 #[cfg(test)]
 mod tests {
+    use std::prelude::v1::*;
+
     macro_rules! t_nohash {
         ($a:expr, $b:expr) => {{
             assert_eq!(format!("{:#}", ::demangle($a)), $b);
@@ -1151,9 +1176,8 @@ mod tests {
     fn demangling_limits() {
         // Stress tests found via fuzzing.
 
-        format!(
-            "{:?}",
-            ::demangle(
+        assert_eq!(
+            super::demangle(
                 "RICu4$TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTOOOOOOOOOOOOOOOOOO\
 OOOOOOOOOOOOOOOTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTOOOOOOOOOOOOOOOOOOOOOOOTTTTTTTTTTTTTTTTTTTTTT\
 TTTTTTTTTTTTTTTOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO\
@@ -1349,13 +1373,14 @@ OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOxxxRICu4\u{002c}\u{002d}xxxxffff\u{0001}\u{00
 fffffffffffffffffffffffffffffffffffffffffxxxxxxxxxxxxxxxxxxxRaRBRaR\u{003e}R\u{003e}xxxu2IC\
 \u{002c}\u{002d}xxxxxxRIC4xxx\u{0001}\u{0000}K\u{0000}\u{0000}xRBRaR\u{003e}RICu6$\u{002d}RBKIQARI\
 Cu6$\u{002d}RBKIQAA\u{0001}\u{0000}\u{0000}\u{0000}\u{0000}\u{0000}\u{0000}\u{0004}TvvKKKKKKKKKxxx\
-xxxxxxxxxxxxBKIQARICu6$\u{002d}RBKIQAA\u{0001}\u{0000}\u{0000}\u{0000}_\u{0000}xxx"
+xxxxxxxxxxxxBKIQARICu6$\u{002d}RBKIQAA\u{0001}\u{0000}\u{0000}\u{0000}_\u{0000}xxx",
             )
+            .map(|_| ()),
+            Err(super::ParseError::RecursedTooDeep)
         );
 
-        format!(
-            "{:?}",
-            ::demangle(
+        assert_eq!(
+            super::demangle(
                 "RIYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
 YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYMYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
 YYYYYYRYYYYYYYYYXB_RXB_lYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYRXB_RXYYYYYYYYYYYYYYYYYYYYYXYYY\
@@ -1454,13 +1479,14 @@ YYYYYYYYYYYYMYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY
 YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
 YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
 YYYYYYYYYYYYYYYYYYYYYyYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYRXB_RXYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
-YYYYYIBRIIRIIBRCIByEEj_ByEEj_EEj"
+YYYYYIBRIIRIIBRCIByEEj_ByEEj_EEj",
             )
+            .map(|_| ()),
+            Err(super::ParseError::RecursedTooDeep)
         );
 
-        format!(
-            "{:?}",
-            ::demangle(
+        assert_eq!(
+            super::demangle(
                 "RYYYYYSSSSSSSSSSSSSSSSSSSSSSSSSSSYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
 YYRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRYYYYYYYY\
 YYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRRRRRSSSSSSRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRYYYYYYYYYRRRRRRSSSSSSSYYY\
@@ -1599,13 +1625,14 @@ RRYYYYYYYYYYYYYmYYYYYYYYYYYYYYYYYYYYYRCu3YYYYYYYYYYYPYYYYYYbYYYYYYYYYRYYYYYYYYYY
 SSRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR\
 RRYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYRCu3YYYYYYYYYYYPYYyYYYbYYYYYYYYYYYYYYRRRRRRRRRRRRRRRRRRRRRRRRR\
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRYYYYYYYYYYYYYmYYYYYYYYYYYYYYYYYYYYYRCu3YYYYYYYYY\
-YYPYYYYYYbYYYYYYYYYRYYYYYYYYYYYYYYYYYYSSSSSSSSSSSS"
+YYPYYYYYYbYYYYYYYYYRYYYYYYYYYYYYYYYYYYSSSSSSSSSSSS",
             )
+            .map(|_| ()),
+            Err(super::ParseError::RecursedTooDeep)
         );
 
-        format!(
-            "{:?}",
-            ::demangle(
+        assert_eq!(
+            super::demangle(
                 "RYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
 YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
 YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
@@ -1702,16 +1729,19 @@ YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY
 YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
 YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
 YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\
-R\u{003b}"
+R\u{003b}",
             )
+            .map(|_| ()),
+            Err(super::ParseError::RecursedTooDeep)
         );
 
-        format!(
-            "{:?}",
+        assert_contains!(
             ::demangle(
                 "RIC20tRYIMYNRYFG05_EB5_B_B6_RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR\
-RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRB_E"
+        RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRB_E",
             )
+            .to_string(),
+            "{recursion limit reached}"
         );
     }
 
@@ -1763,11 +1793,6 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRB_E"
         // Close the `I` at the start.
         sym.push('E');
 
-        let demangled = format!("{:#}", ::demangle(&sym));
-
-        // NOTE(eddyb) the `?` indicates that a parse error was encountered.
-        // FIXME(eddyb) replace `v0::Invalid` with a proper `v0::ParseError`,
-        // that could show e.g. `<recursion limit reached>` instead of `?`.
-        assert_eq!(demangled.replace(&['R', '&'][..], ""), "::<?>");
+        assert_contains!(::demangle(&sym).to_string(), "{recursion limit reached}");
     }
 }
