@@ -527,13 +527,13 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     where
         F: FnOnce(&mut Self) -> fmt::Result,
     {
-        let backref_parser = self.parser_mut().and_then(|p| p.backref());
+        let backref_parser = parse!(self, backref);
 
         if self.out.is_none() {
             return Ok(());
         }
 
-        let orig_parser = mem::replace(&mut self.parser, backref_parser);
+        let orig_parser = mem::replace(&mut self.parser, Ok(backref_parser));
         let r = f(self);
         self.parser = orig_parser;
         r
@@ -657,6 +657,15 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 let ns = parse!(self, namespace);
 
                 self.print_path(in_value)?;
+
+                // HACK(eddyb) if the parser is already marked as having errored,
+                // `parse!` below will print a `?` without its preceding `::`
+                // (because printing the `::` is skipped in certain conditions,
+                // i.e. a lowercase namespace with an empty identifier),
+                // so in order to get `::?`, the `::` has to be printed here.
+                if self.parser.is_err() {
+                    self.print("::")?;
+                }
 
                 let dis = parse!(self, disambiguator);
                 let name = parse!(self, ident);

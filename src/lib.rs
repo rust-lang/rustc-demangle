@@ -423,7 +423,7 @@ mod tests {
         // that could show e.g. `<recursion limit reached>` instead of `?`.
         assert_eq!(
             super::demangle("_RNvB_1a").to_string().replace("::a", ""),
-            "?"
+            "?::?"
         );
         assert_eq!(
             super::demangle("_RMC0RB2_").to_string().replace("&", ""),
