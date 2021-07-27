@@ -1050,6 +1050,11 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 mod tests {
     use std::prelude::v1::*;
 
+    macro_rules! t {
+        ($a:expr, $b:expr) => {{
+            assert_eq!(format!("{}", ::demangle($a)), $b);
+        }};
+    }
     macro_rules! t_nohash {
         ($a:expr, $b:expr) => {{
             assert_eq!(format!("{:#}", ::demangle($a)), $b);
@@ -1059,6 +1064,23 @@ mod tests {
         ($a:expr, $b:expr) => {
             t_nohash!(concat!("_RMC0", $a), concat!("<", $b, ">"))
         };
+    }
+    macro_rules! t_const {
+        ($mangled:expr, $value:expr) => {
+            t_nohash!(
+                concat!("_RIC0K", $mangled, "E"),
+                concat!("::<", $value, ">")
+            )
+        };
+    }
+    macro_rules! t_const_typed {
+        ($mangled:expr, $value:expr, $value_ty:expr) => {{
+            t_const!($mangled, $value);
+            t!(
+                concat!("_RIC0K", $mangled, "E"),
+                concat!("[0]::<", $value, ": ", $value_ty, ">")
+            );
+        }};
     }
 
     #[test]
@@ -1102,46 +1124,20 @@ mod tests {
             "INtC8arrayvec8ArrayVechKj7b_E",
             "arrayvec::ArrayVec<u8, 123>"
         );
+        t_const_typed!("j7b_", "123", "usize");
     }
 
     #[test]
     fn demangle_min_const_generics() {
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_8UnsignedKhb_E",
-            "<const_generic::Unsigned<11>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_6SignedKs98_E",
-            "<const_generic::Signed<152>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_6SignedKanb_E",
-            "<const_generic::Signed<-11>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4BoolKb0_E",
-            "<const_generic::Bool<false>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4BoolKb1_E",
-            "<const_generic::Bool<true>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKc76_E",
-            "<const_generic::Char<'v'>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKca_E",
-            "<const_generic::Char<'\\n'>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKc2202_E",
-            "<const_generic::Char<'∂'>>"
-        );
-        t_nohash!(
-            "_RNvNvMCs4fqI2P2rA04_13const_genericINtB4_3FooKpE3foo3FOO",
-            "<const_generic::Foo<_>>::foo::FOO"
-        );
+        t_const!("p", "_");
+        t_const_typed!("hb_", "11", "u8");
+        t_const_typed!("s98_", "152", "i16");
+        t_const_typed!("anb_", "-11", "i8");
+        t_const_typed!("b0_", "false", "bool");
+        t_const_typed!("b1_", "true", "bool");
+        t_const_typed!("c76_", "'v'", "char");
+        t_const_typed!("ca_", "'\\n'", "char");
+        t_const_typed!("c2202_", "'∂'", "char");
     }
 
     #[test]
