@@ -946,73 +946,64 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     }
 
     fn print_const(&mut self) -> fmt::Result {
+        let tag = parse!(self, next);
+
         parse!(self, push_depth);
 
-        if self.eat(b'B') {
-            self.print_backref(Self::print_const)?;
-
-            self.pop_depth();
-            return Ok(());
-        }
-
-        let ty_tag = parse!(self, next);
-
-        if ty_tag == b'p' {
-            // We don't encode the type if the value is a placeholder.
-            self.print("_")?;
-
-            self.pop_depth();
-            return Ok(());
-        }
-
-        match ty_tag {
+        match tag {
+            // Placeholder.
+            b'p' => self.print("_")?,
             // Unsigned integer types.
-            b'h' | b't' | b'm' | b'y' | b'o' | b'j' => self.print_const_uint()?,
+            b'h' | b't' | b'm' | b'y' | b'o' | b'j' => self.print_const_uint(tag)?,
             // Signed integer types.
-            b'a' | b's' | b'l' | b'x' | b'n' | b'i' => self.print_const_int()?,
+            b'a' | b's' | b'l' | b'x' | b'n' | b'i' => self.print_const_int(tag)?,
             // Bool.
             b'b' => self.print_const_bool()?,
             // Char.
             b'c' => self.print_const_char()?,
 
-            // This branch ought to be unreachable.
+            b'B' => {
+                self.print_backref(Self::print_const)?;
+            }
+
             _ => invalid!(self),
         };
-
-        if let Some(out) = &mut self.out {
-            if !out.alternate() {
-                self.print(": ")?;
-                let ty = basic_type(ty_tag).unwrap();
-                self.print(ty)?;
-            }
-        }
 
         self.pop_depth();
         Ok(())
     }
 
-    fn print_const_uint(&mut self) -> fmt::Result {
+    fn print_const_uint(&mut self, ty_tag: u8) -> fmt::Result {
         let hex = parse!(self, hex_nibbles);
 
         // Print anything that doesn't fit in `u64` verbatim.
         if hex.len() > 16 {
             self.print("0x")?;
-            return self.print(hex);
+            self.print(hex)?;
+        } else {
+            let mut v = 0;
+            for c in hex.chars() {
+                v = (v << 4) | (c.to_digit(16).unwrap() as u64);
+            }
+            self.print(v)?;
         }
 
-        let mut v = 0;
-        for c in hex.chars() {
-            v = (v << 4) | (c.to_digit(16).unwrap() as u64);
+        if let Some(out) = &mut self.out {
+            if !out.alternate() {
+                let ty = basic_type(ty_tag).unwrap();
+                self.print(ty)?;
+            }
         }
-        self.print(v)
+
+        Ok(())
     }
 
-    fn print_const_int(&mut self) -> fmt::Result {
+    fn print_const_int(&mut self, ty_tag: u8) -> fmt::Result {
         if self.eat(b'n') {
             self.print("-")?;
         }
 
-        self.print_const_uint()
+        self.print_const_uint(ty_tag)
     }
 
     fn print_const_bool(&mut self) -> fmt::Result {
@@ -1073,12 +1064,12 @@ mod tests {
             )
         };
     }
-    macro_rules! t_const_typed {
-        ($mangled:expr, $value:expr, $value_ty:expr) => {{
+    macro_rules! t_const_suffixed {
+        ($mangled:expr, $value:expr, $value_ty_suffix:expr) => {{
             t_const!($mangled, $value);
             t!(
                 concat!("_RIC0K", $mangled, "E"),
-                concat!("[0]::<", $value, ": ", $value_ty, ">")
+                concat!("[0]::<", $value, $value_ty_suffix, ">")
             );
         }};
     }
@@ -1124,20 +1115,21 @@ mod tests {
             "INtC8arrayvec8ArrayVechKj7b_E",
             "arrayvec::ArrayVec<u8, 123>"
         );
-        t_const_typed!("j7b_", "123", "usize");
+        t_const_suffixed!("j7b_", "123", "usize");
     }
 
     #[test]
     fn demangle_min_const_generics() {
         t_const!("p", "_");
-        t_const_typed!("hb_", "11", "u8");
-        t_const_typed!("s98_", "152", "i16");
-        t_const_typed!("anb_", "-11", "i8");
-        t_const_typed!("b0_", "false", "bool");
-        t_const_typed!("b1_", "true", "bool");
-        t_const_typed!("c76_", "'v'", "char");
-        t_const_typed!("ca_", "'\\n'", "char");
-        t_const_typed!("c2202_", "'∂'", "char");
+        t_const_suffixed!("hb_", "11", "u8");
+        t_const_suffixed!("off00ff00ff00ff00ff_", "0xff00ff00ff00ff00ff", "u128");
+        t_const_suffixed!("s98_", "152", "i16");
+        t_const_suffixed!("anb_", "-11", "i8");
+        t_const!("b0_", "false");
+        t_const!("b1_", "true");
+        t_const!("c76_", "'v'");
+        t_const!("ca_", "'\\n'");
+        t_const!("c2202_", "'∂'");
     }
 
     #[test]
