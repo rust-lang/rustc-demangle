@@ -1095,13 +1095,17 @@ mod tests {
     }
 
     #[test]
-    fn demangle_const_generics() {
+    fn demangle_const_generics_preview() {
         // NOTE(eddyb) this was hand-written, before rustc had working
         // const generics support (but the mangling format did include them).
         t_nohash_type!(
             "INtC8arrayvec8ArrayVechKj7b_E",
             "arrayvec::ArrayVec<u8, 123>"
         );
+    }
+
+    #[test]
+    fn demangle_min_const_generics() {
         t_nohash!(
             "_RMCs4fqI2P2rA04_13const_genericINtB0_8UnsignedKhb_E",
             "<const_generic::Unsigned<11>>"
