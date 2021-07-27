@@ -1,3 +1,4 @@
+use core::convert::TryFrom;
 use core::{char, fmt, mem};
 
 #[allow(unused_macros)]
@@ -264,6 +265,30 @@ impl<'s> fmt::Display for Ident<'s> {
     }
 }
 
+/// Sequence of lowercase hexadecimal nibbles (`0-9a-f`), used by leaf consts.
+struct HexNibbles<'s> {
+    nibbles: &'s str,
+}
+
+impl<'s> HexNibbles<'s> {
+    /// Decode an integer value (with the "most significant nibble" first),
+    /// returning `None` if it can't fit in an `u64`.
+    // FIXME(eddyb) should this "just" use `u128` instead?
+    fn try_parse_uint(&self) -> Option<u64> {
+        let nibbles = self.nibbles.trim_start_matches("0");
+
+        if nibbles.len() > 16 {
+            return None;
+        }
+
+        let mut v = 0;
+        for nibble in nibbles.chars() {
+            v = (v << 4) | (nibble.to_digit(16).unwrap() as u64);
+        }
+        Some(v)
+    }
+}
+
 fn basic_type(tag: u8) -> Option<&'static str> {
     Some(match tag {
         b'b' => "bool",
@@ -331,7 +356,7 @@ impl<'s> Parser<'s> {
         Ok(b)
     }
 
-    fn hex_nibbles(&mut self) -> Result<&'s str, ParseError> {
+    fn hex_nibbles(&mut self) -> Result<HexNibbles<'s>, ParseError> {
         let start = self.next;
         loop {
             match self.next()? {
@@ -340,7 +365,9 @@ impl<'s> Parser<'s> {
                 _ => return Err(ParseError::Invalid),
             }
         }
-        Ok(&self.sym[start..self.next - 1])
+        Ok(HexNibbles {
+            nibbles: &self.sym[start..self.next - 1],
+        })
     }
 
     fn digit_10(&mut self) -> Result<u8, ParseError> {
@@ -976,16 +1003,14 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     fn print_const_uint(&mut self, ty_tag: u8) -> fmt::Result {
         let hex = parse!(self, hex_nibbles);
 
-        // Print anything that doesn't fit in `u64` verbatim.
-        if hex.len() > 16 {
-            self.print("0x")?;
-            self.print(hex)?;
-        } else {
-            let mut v = 0;
-            for c in hex.chars() {
-                v = (v << 4) | (c.to_digit(16).unwrap() as u64);
+        match hex.try_parse_uint() {
+            Some(v) => self.print(v)?,
+
+            // Print anything that doesn't fit in `u64` verbatim.
+            None => {
+                self.print("0x")?;
+                self.print(hex.nibbles)?;
             }
-            self.print(v)?;
         }
 
         if let Some(out) = &mut self.out {
@@ -1007,33 +1032,27 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     }
 
     fn print_const_bool(&mut self) -> fmt::Result {
-        match parse!(self, hex_nibbles).as_bytes() {
-            b"0" => self.print("false"),
-            b"1" => self.print("true"),
+        match parse!(self, hex_nibbles).try_parse_uint() {
+            Some(0) => self.print("false"),
+            Some(1) => self.print("true"),
             _ => invalid!(self),
         }
     }
 
     fn print_const_char(&mut self) -> fmt::Result {
-        let hex = parse!(self, hex_nibbles);
-
-        // Valid `char`s fit in `u32`.
-        if hex.len() > 8 {
-            invalid!(self);
-        }
-
-        let mut v = 0;
-        for c in hex.chars() {
-            v = (v << 4) | (c.to_digit(16).unwrap() as u32);
-        }
-        if let Some(c) = char::from_u32(v) {
-            if let Some(out) = &mut self.out {
-                fmt::Debug::fmt(&c, out)?;
+        match parse!(self, hex_nibbles)
+            .try_parse_uint()
+            .and_then(|v| u32::try_from(v).ok())
+            .and_then(char::from_u32)
+        {
+            Some(c) => {
+                if let Some(out) = &mut self.out {
+                    fmt::Debug::fmt(&c, out)?;
+                }
+                Ok(())
             }
-        } else {
-            invalid!(self);
+            None => invalid!(self),
         }
-        Ok(())
     }
 }
 
