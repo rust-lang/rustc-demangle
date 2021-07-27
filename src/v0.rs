@@ -978,23 +978,42 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         parse!(self, push_depth);
 
         match tag {
-            // Placeholder.
             b'p' => self.print("_")?,
-            // Unsigned integer types.
+
+            // Primitive leaves with hex-encoded values (see `basic_type`).
             b'h' | b't' | b'm' | b'y' | b'o' | b'j' => self.print_const_uint(tag)?,
-            // Signed integer types.
-            b'a' | b's' | b'l' | b'x' | b'n' | b'i' => self.print_const_int(tag)?,
-            // Bool.
-            b'b' => self.print_const_bool()?,
-            // Char.
-            b'c' => self.print_const_char()?,
+            b'a' | b's' | b'l' | b'x' | b'n' | b'i' => {
+                if self.eat(b'n') {
+                    self.print("-")?;
+                }
+
+                self.print_const_uint(tag)?;
+            }
+            b'b' => match parse!(self, hex_nibbles).try_parse_uint() {
+                Some(0) => self.print("false")?,
+                Some(1) => self.print("true")?,
+                _ => invalid!(self),
+            },
+            b'c' => {
+                let valid_char = parse!(self, hex_nibbles)
+                    .try_parse_uint()
+                    .and_then(|v| u32::try_from(v).ok())
+                    .and_then(char::from_u32);
+                match valid_char {
+                    Some(c) => {
+                        if let Some(out) = &mut self.out {
+                            fmt::Debug::fmt(&c, out)?;
+                        }
+                    }
+                    None => invalid!(self),
+                }
+            }
 
             b'B' => {
                 self.print_backref(Self::print_const)?;
             }
-
             _ => invalid!(self),
-        };
+        }
 
         self.pop_depth();
         Ok(())
@@ -1021,38 +1040,6 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         }
 
         Ok(())
-    }
-
-    fn print_const_int(&mut self, ty_tag: u8) -> fmt::Result {
-        if self.eat(b'n') {
-            self.print("-")?;
-        }
-
-        self.print_const_uint(ty_tag)
-    }
-
-    fn print_const_bool(&mut self) -> fmt::Result {
-        match parse!(self, hex_nibbles).try_parse_uint() {
-            Some(0) => self.print("false"),
-            Some(1) => self.print("true"),
-            _ => invalid!(self),
-        }
-    }
-
-    fn print_const_char(&mut self) -> fmt::Result {
-        match parse!(self, hex_nibbles)
-            .try_parse_uint()
-            .and_then(|v| u32::try_from(v).ok())
-            .and_then(char::from_u32)
-        {
-            Some(c) => {
-                if let Some(out) = &mut self.out {
-                    fmt::Debug::fmt(&c, out)?;
-                }
-                Ok(())
-            }
-            None => invalid!(self),
-        }
     }
 }
 
