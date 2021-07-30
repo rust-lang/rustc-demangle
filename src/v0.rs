@@ -893,7 +893,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             let lt = parse!(self, integer_62);
             self.print_lifetime_from_index(lt)
         } else if self.eat(b'K') {
-            self.print_const()
+            self.print_const(false)
         } else {
             self.print_type()
         }
@@ -939,7 +939,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 self.print_type()?;
                 if tag == b'A' {
                     self.print("; ")?;
-                    self.print_const()?;
+                    self.print_const(true)?;
                 }
                 self.print("]")?;
             }
@@ -1079,7 +1079,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         Ok(())
     }
 
-    fn print_const(&mut self) -> fmt::Result {
+    fn print_const(&mut self, in_value: bool) -> fmt::Result {
         let tag = parse!(self, next);
 
         parse!(self, push_depth);
@@ -1091,7 +1091,12 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         // used (especially any special-casing), every case that needs braces
         // has to call `open_brace(self)?` (and the closing brace is automatic).
         let mut opened_brace = false;
-        let mut open_brace = |this: &mut Self| {
+        let mut open_brace_if_outside_expr = |this: &mut Self| {
+            // If this expression is nested in another, braces aren't required.
+            if in_value {
+                return Ok(());
+            }
+
             opened_brace = true;
             this.print("{")
         };
@@ -1127,17 +1132,28 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 // NOTE(eddyb) a string literal `"..."` has type `&str`, so
                 // to get back the type `str`, `*"..."` syntax is needed
                 // (even if that may not be valid in Rust itself).
-                open_brace(self)?;
+                open_brace_if_outside_expr(self)?;
                 self.print("*")?;
 
-                match parse!(self, hex_nibbles).try_parse_str_chars() {
-                    Some(chars) => self.print_quoted_escaped_chars('"', chars)?,
-                    None => invalid!(self),
-                }
+                self.print_const_str_literal()?;
             }
 
+            b'R' | b'Q' => {
+                // NOTE(eddyb) this prints `"..."` instead of `&*"..."`, which
+                // is what `Re..._` would imply (see comment for `str` above).
+                if tag == b'R' && self.eat(b'e') {
+                    self.print_const_str_literal()?;
+                } else {
+                    open_brace_if_outside_expr(self)?;
+                    self.print("&")?;
+                    if tag != b'R' {
+                        self.print("mut ")?;
+                    }
+                    self.print_const(true)?;
+                }
+            }
             b'B' => {
-                self.print_backref(Self::print_const)?;
+                self.print_backref(|this| this.print_const(in_value))?;
             }
             _ => invalid!(self),
         }
@@ -1171,6 +1187,13 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         }
 
         Ok(())
+    }
+
+    fn print_const_str_literal(&mut self) -> fmt::Result {
+        match parse!(self, hex_nibbles).try_parse_str_chars() {
+            Some(chars) => self.print_quoted_escaped_chars('"', chars),
+            None => invalid!(self),
+        }
     }
 }
 
@@ -1286,6 +1309,37 @@ mod tests {
               95f09f94a520c2a720f09fa7a1f09f929bf09f929af09f9299f09f929c_",
             "{*\"🐊🦈🦆🐮 § 🐶👒☕🔥 § 🧡💛💚💙💜\"}"
         );
+    }
+
+    // NOTE(eddyb) this uses the same strings as `demangle_const_str` and should
+    // be kept in sync with it - while a macro could be used to generate both
+    // `str` and `&str` tests, from a single list of strings, this seems clearer.
+    #[test]
+    fn demangle_const_ref_str() {
+        t_const!("Re616263_", "\"abc\"");
+        t_const!("Re27_", r#""'""#);
+        t_const!("Re090a_", "\"\\t\\n\"");
+        t_const!("Ree28882c3bc_", "\"∂ü\"");
+        t_const!(
+            "Ree183a1e18390e183ade1839be18394e1839ae18390e183935fe18392e18394e1839b\
+               e183a0e18398e18394e1839ae183985fe183a1e18390e18393e18398e1839ae18398_",
+            "\"საჭმელად_გემრიელი_სადილი\""
+        );
+        t_const!(
+            "Ref09f908af09fa688f09fa686f09f90ae20c2a720f09f90b6f09f9192e298\
+               95f09f94a520c2a720f09fa7a1f09f929bf09f929af09f9299f09f929c_",
+            "\"🐊🦈🦆🐮 § 🐶👒☕🔥 § 🧡💛💚💙💜\""
+        );
+    }
+
+    #[test]
+    fn demangle_const_ref() {
+        t_const!("Rp", "{&_}");
+        t_const!("Rh7b_", "{&123}");
+        t_const!("Rb0_", "{&false}");
+        t_const!("Rc58_", "{&'X'}");
+        t_const!("RRRh0_", "{&&&0}");
+        t_const!("RRRe_", "{&&\"\"}");
     }
 
     #[test]
