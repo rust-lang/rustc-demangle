@@ -1,5 +1,5 @@
 use core::convert::TryFrom;
-use core::{char, fmt, mem};
+use core::{char, fmt, iter, mem};
 
 #[allow(unused_macros)]
 macro_rules! write {
@@ -604,6 +604,35 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         Ok(())
     }
 
+    /// Output the given `char`s (escaped using `char::escape_debug`), with the
+    /// whole sequence wrapped in quotes, for either a `char` or `&str` literal,
+    /// if printing isn't being skipped.
+    fn print_quoted_escaped_chars(
+        &mut self,
+        quote: char,
+        chars: impl Iterator<Item = char>,
+    ) -> fmt::Result {
+        if let Some(out) = &mut self.out {
+            use core::fmt::Write;
+
+            out.write_char(quote)?;
+            for c in chars {
+                // Special-case not escaping a single/double quote, when
+                // inside the opposite kind of quote.
+                if matches!((quote, c), ('\'', '"') | ('"', '\'')) {
+                    out.write_char(c)?;
+                    continue;
+                }
+
+                for escaped in c.escape_debug() {
+                    out.write_char(escaped)?;
+                }
+            }
+            out.write_char(quote)?;
+        }
+        Ok(())
+    }
+
     /// Print the lifetime according to the previously decoded index.
     /// An index of `0` always refers to `'_`, but starting with `1`,
     /// indices refer to late-bound lifetimes introduced by a binder.
@@ -1000,11 +1029,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     .and_then(|v| u32::try_from(v).ok())
                     .and_then(char::from_u32);
                 match valid_char {
-                    Some(c) => {
-                        if let Some(out) = &mut self.out {
-                            fmt::Debug::fmt(&c, out)?;
-                        }
-                    }
+                    Some(c) => self.print_quoted_escaped_chars('\'', iter::once(c))?,
                     None => invalid!(self),
                 }
             }
