@@ -1134,6 +1134,7 @@ mod tests {
         t_const!("b0_", "false");
         t_const!("b1_", "true");
         t_const!("c76_", "'v'");
+        t_const!("c22_", r#"'"'"#);
         t_const!("ca_", "'\\n'");
         t_const!("c2202_", "'∂'");
     }
