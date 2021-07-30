@@ -1,5 +1,5 @@
 use core::convert::TryFrom;
-use core::{char, fmt, iter, mem};
+use core::{char, fmt, iter, mem, str};
 
 #[allow(unused_macros)]
 macro_rules! write {
@@ -286,6 +286,84 @@ impl<'s> HexNibbles<'s> {
             v = (v << 4) | (nibble.to_digit(16).unwrap() as u64);
         }
         Some(v)
+    }
+
+    /// Decode a UTF-8 byte sequence (with each byte using a pair of nibbles)
+    /// into individual `char`s, returning `None` for invalid UTF-8.
+    fn try_parse_str_chars(&self) -> Option<impl Iterator<Item = char> + 's> {
+        if self.nibbles.len() % 2 != 0 {
+            return None;
+        }
+
+        // FIXME(eddyb) use `array_chunks` instead, when that becomes stable.
+        let mut bytes = self
+            .nibbles
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|slice| match slice {
+                [a, b] => [a, b],
+                _ => unreachable!(),
+            })
+            .map(|[&hi, &lo]| {
+                let half = |nibble: u8| (nibble as char).to_digit(16).unwrap() as u8;
+                (half(hi) << 4) | half(lo)
+            });
+
+        let chars = iter::from_fn(move || {
+            // As long as there are any bytes left, there's at least one more
+            // UTF-8-encoded `char` to decode (or the possibility of error).
+            bytes.next().map(|first_byte| -> Result<char, ()> {
+                // FIXME(eddyb) this `enum` and `fn` should be somewhere in `core`.
+                enum Utf8FirstByteError {
+                    ContinuationByte,
+                    TooLong,
+                }
+                fn utf8_len_from_first_byte(byte: u8) -> Result<usize, Utf8FirstByteError> {
+                    match byte {
+                        0x00..=0x7f => Ok(1),
+                        0x80..=0xbf => Err(Utf8FirstByteError::ContinuationByte),
+                        0xc0..=0xdf => Ok(2),
+                        0xe0..=0xef => Ok(3),
+                        0xf0..=0xf7 => Ok(4),
+                        0xf8..=0xff => Err(Utf8FirstByteError::TooLong),
+                    }
+                }
+
+                // Collect the appropriate amount of bytes (up to 4), according
+                // to the UTF-8 length implied by the first byte.
+                let utf8_len = utf8_len_from_first_byte(first_byte).map_err(|_| ())?;
+                let utf8 = &mut [first_byte, 0, 0, 0][..utf8_len];
+                for i in 1..utf8_len {
+                    utf8[i] = bytes.next().ok_or(())?;
+                }
+
+                // Fully validate the UTF-8 sequence.
+                let s = str::from_utf8(utf8).map_err(|_| ())?;
+
+                // Since we included exactly one UTF-8 sequence, and validation
+                // succeeded, `str::chars` should return exactly one `char`.
+                let mut chars = s.chars();
+                match (chars.next(), chars.next()) {
+                    (Some(c), None) => Ok(c),
+                    _ => unreachable!(
+                        "str::from_utf8({:?}) = {:?} was expected to have 1 char, \
+                         but {} chars were found",
+                        utf8,
+                        s,
+                        s.chars().count()
+                    ),
+                }
+            })
+        });
+
+        // HACK(eddyb) doing a separate validation iteration like this might be
+        // wasteful, but it's easier to avoid starting to print a string literal
+        // in the first place, than to abort it mid-string.
+        if chars.clone().any(|r| r.is_err()) {
+            None
+        } else {
+            Some(chars.map(Result::unwrap))
+        }
     }
 }
 
@@ -1006,6 +1084,18 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 
         parse!(self, push_depth);
 
+        // Only literals (and the names of `const` generic parameters, but they
+        // don't get mangled at all), can appear in generic argument position
+        // without any disambiguation, all other expressions require braces.
+        // To avoid duplicating the mapping between `tag` and what syntax gets
+        // used (especially any special-casing), every case that needs braces
+        // has to call `open_brace(self)?` (and the closing brace is automatic).
+        let mut opened_brace = false;
+        let mut open_brace = |this: &mut Self| {
+            opened_brace = true;
+            this.print("{")
+        };
+
         match tag {
             b'p' => self.print("_")?,
 
@@ -1033,11 +1123,27 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     None => invalid!(self),
                 }
             }
+            b'e' => {
+                // NOTE(eddyb) a string literal `"..."` has type `&str`, so
+                // to get back the type `str`, `*"..."` syntax is needed
+                // (even if that may not be valid in Rust itself).
+                open_brace(self)?;
+                self.print("*")?;
+
+                match parse!(self, hex_nibbles).try_parse_str_chars() {
+                    Some(chars) => self.print_quoted_escaped_chars('"', chars)?,
+                    None => invalid!(self),
+                }
+            }
 
             b'B' => {
                 self.print_backref(Self::print_const)?;
             }
             _ => invalid!(self),
+        }
+
+        if opened_brace {
+            self.print("}")?;
         }
 
         self.pop_depth();
@@ -1162,6 +1268,24 @@ mod tests {
         t_const!("c22_", r#"'"'"#);
         t_const!("ca_", "'\\n'");
         t_const!("c2202_", "'∂'");
+    }
+
+    #[test]
+    fn demangle_const_str() {
+        t_const!("e616263_", "{*\"abc\"}");
+        t_const!("e27_", r#"{*"'"}"#);
+        t_const!("e090a_", "{*\"\\t\\n\"}");
+        t_const!("ee28882c3bc_", "{*\"∂ü\"}");
+        t_const!(
+            "ee183a1e18390e183ade1839be18394e1839ae18390e183935fe18392e18394e1839b\
+              e183a0e18398e18394e1839ae183985fe183a1e18390e18393e18398e1839ae18398_",
+            "{*\"საჭმელად_გემრიელი_სადილი\"}"
+        );
+        t_const!(
+            "ef09f908af09fa688f09fa686f09f90ae20c2a720f09f90b6f09f9192e298\
+              95f09f94a520c2a720f09fa7a1f09f929bf09f929af09f9299f09f929c_",
+            "{*\"🐊🦈🦆🐮 § 🐶👒☕🔥 § 🧡💛💚💙💜\"}"
+        );
     }
 
     #[test]
