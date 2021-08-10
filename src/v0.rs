@@ -1152,6 +1152,21 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                     self.print_const(true)?;
                 }
             }
+            b'A' => {
+                open_brace_if_outside_expr(self)?;
+                self.print("[")?;
+                self.print_sep_list(|this| this.print_const(true), ", ")?;
+                self.print("]")?;
+            }
+            b'T' => {
+                open_brace_if_outside_expr(self)?;
+                self.print("(")?;
+                let count = self.print_sep_list(|this| this.print_const(true), ", ")?;
+                if count == 1 {
+                    self.print(",")?;
+                }
+                self.print(")")?;
+            }
             b'B' => {
                 self.print_backref(|this| this.print_const(in_value))?;
             }
@@ -1340,6 +1355,27 @@ mod tests {
         t_const!("Rc58_", "{&'X'}");
         t_const!("RRRh0_", "{&&&0}");
         t_const!("RRRe_", "{&&\"\"}");
+        t_const!("QAE", "{&mut []}");
+    }
+
+    #[test]
+    fn demangle_const_array() {
+        t_const!("AE", "{[]}");
+        t_const!("Aj0_E", "{[0]}");
+        t_const!("Ah1_h2_h3_E", "{[1, 2, 3]}");
+        t_const!("ARe61_Re62_Re63_E", "{[\"a\", \"b\", \"c\"]}");
+        t_const!("AAh1_h2_EAh3_h4_EE", "{[[1, 2], [3, 4]]}");
+    }
+
+    #[test]
+    fn demangle_const_tuple() {
+        t_const!("TE", "{()}");
+        t_const!("Tj0_E", "{(0,)}");
+        t_const!("Th1_b0_E", "{(1, false)}");
+        t_const!(
+            "TRe616263_c78_RAh1_h2_h3_EE",
+            "{(\"abc\", 'x', &[1, 2, 3])}"
+        );
     }
 
     #[test]
