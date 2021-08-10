@@ -1167,6 +1167,33 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                 }
                 self.print(")")?;
             }
+            b'V' => {
+                open_brace_if_outside_expr(self)?;
+                self.print_path(true)?;
+                match parse!(self, next) {
+                    b'U' => {}
+                    b'T' => {
+                        self.print("(")?;
+                        self.print_sep_list(|this| this.print_const(true), ", ")?;
+                        self.print(")")?;
+                    }
+                    b'S' => {
+                        self.print(" { ")?;
+                        self.print_sep_list(
+                            |this| {
+                                parse!(this, disambiguator);
+                                let name = parse!(this, ident);
+                                this.print(name)?;
+                                this.print(": ")?;
+                                this.print_const(true)
+                            },
+                            ", ",
+                        )?;
+                        self.print(" }")?;
+                    }
+                    _ => invalid!(self),
+                }
+            }
             b'B' => {
                 self.print_backref(|this| this.print_const(in_value))?;
             }
@@ -1375,6 +1402,22 @@ mod tests {
         t_const!(
             "TRe616263_c78_RAh1_h2_h3_EE",
             "{(\"abc\", 'x', &[1, 2, 3])}"
+        );
+    }
+
+    #[test]
+    fn demangle_const_adt() {
+        t_const!(
+            "VNvINtNtC4core6option6OptionjE4NoneU",
+            "{core::option::Option::<usize>::None}"
+        );
+        t_const!(
+            "VNvINtNtC4core6option6OptionjE4SomeTj0_E",
+            "{core::option::Option::<usize>::Some(0)}"
+        );
+        t_const!(
+            "VNtC3foo3BarS1sRe616263_2chc78_5sliceRAh1_h2_h3_EE",
+            "{foo::Bar { s: \"abc\", ch: 'x', slice: &[1, 2, 3] }}"
         );
     }
 
