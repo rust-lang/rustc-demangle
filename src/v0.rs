@@ -1,4 +1,5 @@
-use core::{char, fmt, mem};
+use core::convert::TryFrom;
+use core::{char, fmt, iter, mem};
 
 #[allow(unused_macros)]
 macro_rules! write {
@@ -264,6 +265,30 @@ impl<'s> fmt::Display for Ident<'s> {
     }
 }
 
+/// Sequence of lowercase hexadecimal nibbles (`0-9a-f`), used by leaf consts.
+struct HexNibbles<'s> {
+    nibbles: &'s str,
+}
+
+impl<'s> HexNibbles<'s> {
+    /// Decode an integer value (with the "most significant nibble" first),
+    /// returning `None` if it can't fit in an `u64`.
+    // FIXME(eddyb) should this "just" use `u128` instead?
+    fn try_parse_uint(&self) -> Option<u64> {
+        let nibbles = self.nibbles.trim_start_matches("0");
+
+        if nibbles.len() > 16 {
+            return None;
+        }
+
+        let mut v = 0;
+        for nibble in nibbles.chars() {
+            v = (v << 4) | (nibble.to_digit(16).unwrap() as u64);
+        }
+        Some(v)
+    }
+}
+
 fn basic_type(tag: u8) -> Option<&'static str> {
     Some(match tag {
         b'b' => "bool",
@@ -331,7 +356,7 @@ impl<'s> Parser<'s> {
         Ok(b)
     }
 
-    fn hex_nibbles(&mut self) -> Result<&'s str, ParseError> {
+    fn hex_nibbles(&mut self) -> Result<HexNibbles<'s>, ParseError> {
         let start = self.next;
         loop {
             match self.next()? {
@@ -340,7 +365,9 @@ impl<'s> Parser<'s> {
                 _ => return Err(ParseError::Invalid),
             }
         }
-        Ok(&self.sym[start..self.next - 1])
+        Ok(HexNibbles {
+            nibbles: &self.sym[start..self.next - 1],
+        })
     }
 
     fn digit_10(&mut self) -> Result<u8, ParseError> {
@@ -573,6 +600,35 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     fn print(&mut self, x: impl fmt::Display) -> fmt::Result {
         if let Some(out) = &mut self.out {
             fmt::Display::fmt(&x, out)?;
+        }
+        Ok(())
+    }
+
+    /// Output the given `char`s (escaped using `char::escape_debug`), with the
+    /// whole sequence wrapped in quotes, for either a `char` or `&str` literal,
+    /// if printing isn't being skipped.
+    fn print_quoted_escaped_chars(
+        &mut self,
+        quote: char,
+        chars: impl Iterator<Item = char>,
+    ) -> fmt::Result {
+        if let Some(out) = &mut self.out {
+            use core::fmt::Write;
+
+            out.write_char(quote)?;
+            for c in chars {
+                // Special-case not escaping a single/double quote, when
+                // inside the opposite kind of quote.
+                if matches!((quote, c), ('\'', '"') | ('"', '\'')) {
+                    out.write_char(c)?;
+                    continue;
+                }
+
+                for escaped in c.escape_debug() {
+                    out.write_char(escaped)?;
+                }
+            }
+            out.write_char(quote)?;
         }
         Ok(())
     }
@@ -946,102 +1002,68 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
     }
 
     fn print_const(&mut self) -> fmt::Result {
+        let tag = parse!(self, next);
+
         parse!(self, push_depth);
 
-        if self.eat(b'B') {
-            self.print_backref(Self::print_const)?;
+        match tag {
+            b'p' => self.print("_")?,
 
-            self.pop_depth();
-            return Ok(());
-        }
+            // Primitive leaves with hex-encoded values (see `basic_type`).
+            b'h' | b't' | b'm' | b'y' | b'o' | b'j' => self.print_const_uint(tag)?,
+            b'a' | b's' | b'l' | b'x' | b'n' | b'i' => {
+                if self.eat(b'n') {
+                    self.print("-")?;
+                }
 
-        let ty_tag = parse!(self, next);
-
-        if ty_tag == b'p' {
-            // We don't encode the type if the value is a placeholder.
-            self.print("_")?;
-
-            self.pop_depth();
-            return Ok(());
-        }
-
-        match ty_tag {
-            // Unsigned integer types.
-            b'h' | b't' | b'm' | b'y' | b'o' | b'j' => self.print_const_uint()?,
-            // Signed integer types.
-            b'a' | b's' | b'l' | b'x' | b'n' | b'i' => self.print_const_int()?,
-            // Bool.
-            b'b' => self.print_const_bool()?,
-            // Char.
-            b'c' => self.print_const_char()?,
-
-            // This branch ought to be unreachable.
-            _ => invalid!(self),
-        };
-
-        if let Some(out) = &mut self.out {
-            if !out.alternate() {
-                self.print(": ")?;
-                let ty = basic_type(ty_tag).unwrap();
-                self.print(ty)?;
+                self.print_const_uint(tag)?;
             }
+            b'b' => match parse!(self, hex_nibbles).try_parse_uint() {
+                Some(0) => self.print("false")?,
+                Some(1) => self.print("true")?,
+                _ => invalid!(self),
+            },
+            b'c' => {
+                let valid_char = parse!(self, hex_nibbles)
+                    .try_parse_uint()
+                    .and_then(|v| u32::try_from(v).ok())
+                    .and_then(char::from_u32);
+                match valid_char {
+                    Some(c) => self.print_quoted_escaped_chars('\'', iter::once(c))?,
+                    None => invalid!(self),
+                }
+            }
+
+            b'B' => {
+                self.print_backref(Self::print_const)?;
+            }
+            _ => invalid!(self),
         }
 
         self.pop_depth();
         Ok(())
     }
 
-    fn print_const_uint(&mut self) -> fmt::Result {
+    fn print_const_uint(&mut self, ty_tag: u8) -> fmt::Result {
         let hex = parse!(self, hex_nibbles);
 
-        // Print anything that doesn't fit in `u64` verbatim.
-        if hex.len() > 16 {
-            self.print("0x")?;
-            return self.print(hex);
-        }
+        match hex.try_parse_uint() {
+            Some(v) => self.print(v)?,
 
-        let mut v = 0;
-        for c in hex.chars() {
-            v = (v << 4) | (c.to_digit(16).unwrap() as u64);
-        }
-        self.print(v)
-    }
-
-    fn print_const_int(&mut self) -> fmt::Result {
-        if self.eat(b'n') {
-            self.print("-")?;
-        }
-
-        self.print_const_uint()
-    }
-
-    fn print_const_bool(&mut self) -> fmt::Result {
-        match parse!(self, hex_nibbles).as_bytes() {
-            b"0" => self.print("false"),
-            b"1" => self.print("true"),
-            _ => invalid!(self),
-        }
-    }
-
-    fn print_const_char(&mut self) -> fmt::Result {
-        let hex = parse!(self, hex_nibbles);
-
-        // Valid `char`s fit in `u32`.
-        if hex.len() > 8 {
-            invalid!(self);
-        }
-
-        let mut v = 0;
-        for c in hex.chars() {
-            v = (v << 4) | (c.to_digit(16).unwrap() as u32);
-        }
-        if let Some(c) = char::from_u32(v) {
-            if let Some(out) = &mut self.out {
-                fmt::Debug::fmt(&c, out)?;
+            // Print anything that doesn't fit in `u64` verbatim.
+            None => {
+                self.print("0x")?;
+                self.print(hex.nibbles)?;
             }
-        } else {
-            invalid!(self);
         }
+
+        if let Some(out) = &mut self.out {
+            if !out.alternate() {
+                let ty = basic_type(ty_tag).unwrap();
+                self.print(ty)?;
+            }
+        }
+
         Ok(())
     }
 }
@@ -1050,6 +1072,11 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 mod tests {
     use std::prelude::v1::*;
 
+    macro_rules! t {
+        ($a:expr, $b:expr) => {{
+            assert_eq!(format!("{}", ::demangle($a)), $b);
+        }};
+    }
     macro_rules! t_nohash {
         ($a:expr, $b:expr) => {{
             assert_eq!(format!("{:#}", ::demangle($a)), $b);
@@ -1059,6 +1086,23 @@ mod tests {
         ($a:expr, $b:expr) => {
             t_nohash!(concat!("_RMC0", $a), concat!("<", $b, ">"))
         };
+    }
+    macro_rules! t_const {
+        ($mangled:expr, $value:expr) => {
+            t_nohash!(
+                concat!("_RIC0K", $mangled, "E"),
+                concat!("::<", $value, ">")
+            )
+        };
+    }
+    macro_rules! t_const_suffixed {
+        ($mangled:expr, $value:expr, $value_ty_suffix:expr) => {{
+            t_const!($mangled, $value);
+            t!(
+                concat!("_RIC0K", $mangled, "E"),
+                concat!("[0]::<", $value, $value_ty_suffix, ">")
+            );
+        }};
     }
 
     #[test]
@@ -1095,49 +1139,29 @@ mod tests {
     }
 
     #[test]
-    fn demangle_const_generics() {
+    fn demangle_const_generics_preview() {
         // NOTE(eddyb) this was hand-written, before rustc had working
         // const generics support (but the mangling format did include them).
         t_nohash_type!(
             "INtC8arrayvec8ArrayVechKj7b_E",
             "arrayvec::ArrayVec<u8, 123>"
         );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_8UnsignedKhb_E",
-            "<const_generic::Unsigned<11>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_6SignedKs98_E",
-            "<const_generic::Signed<152>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_6SignedKanb_E",
-            "<const_generic::Signed<-11>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4BoolKb0_E",
-            "<const_generic::Bool<false>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4BoolKb1_E",
-            "<const_generic::Bool<true>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKc76_E",
-            "<const_generic::Char<'v'>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKca_E",
-            "<const_generic::Char<'\\n'>>"
-        );
-        t_nohash!(
-            "_RMCs4fqI2P2rA04_13const_genericINtB0_4CharKc2202_E",
-            "<const_generic::Char<'∂'>>"
-        );
-        t_nohash!(
-            "_RNvNvMCs4fqI2P2rA04_13const_genericINtB4_3FooKpE3foo3FOO",
-            "<const_generic::Foo<_>>::foo::FOO"
-        );
+        t_const_suffixed!("j7b_", "123", "usize");
+    }
+
+    #[test]
+    fn demangle_min_const_generics() {
+        t_const!("p", "_");
+        t_const_suffixed!("hb_", "11", "u8");
+        t_const_suffixed!("off00ff00ff00ff00ff_", "0xff00ff00ff00ff00ff", "u128");
+        t_const_suffixed!("s98_", "152", "i16");
+        t_const_suffixed!("anb_", "-11", "i8");
+        t_const!("b0_", "false");
+        t_const!("b1_", "true");
+        t_const!("c76_", "'v'");
+        t_const!("c22_", r#"'"'"#);
+        t_const!("ca_", "'\\n'");
+        t_const!("c2202_", "'∂'");
     }
 
     #[test]
