@@ -49,7 +49,7 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ParseError> {
         s
     } else {
         return Err(ParseError::Invalid);
-    }
+    };
 
     // Paths always start with uppercase characters.
     match inner.bytes().next() {
