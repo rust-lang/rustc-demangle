@@ -163,8 +163,7 @@ impl<'a> fmt::Display for Demangle<'a> {
                         "C" => ",",
 
                         _ => {
-                            if escape.starts_with('u') {
-                                let digits = &escape[1..];
+                            if let Some(digits) = escape.strip_prefix('u') {
                                 let all_lower_hex = digits.bytes().all(|c| match c {
                                     b'0'..=b'9' | b'a'..=b'f' => true,
                                     _ => false,
