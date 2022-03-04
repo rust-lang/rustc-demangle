@@ -6,7 +6,7 @@ Demangling for Rust symbols, written in Rust.
 
 ## Usage
 
-You can add this as a dependency via your `Cargo.toml`
+You can add this as a dependency via your `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -19,7 +19,7 @@ documentation](https://docs.rs/rustc-demangle) for usage.
 ## Usage from non-Rust languages
 
 You can also use this crate from other languages via the C API wrapper in the
-`crates/capi` directory. This can be build with:
+`crates/capi` directory. This can be built with:
 
 ```sh
 $ cargo build -p rustc-demangle-capi --release
@@ -35,9 +35,9 @@ platform). These objects implement the interface specified in
 This project is licensed under either of
 
  * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or
-   http://www.apache.org/licenses/LICENSE-2.0)
+   https://www.apache.org/licenses/LICENSE-2.0)
  * MIT license ([LICENSE-MIT](LICENSE-MIT) or
-   http://opensource.org/licenses/MIT)
+   https://opensource.org/licenses/MIT)
 
 at your option.
 

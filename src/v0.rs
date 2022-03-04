@@ -1446,7 +1446,7 @@ mod tests {
 
     #[test]
     fn demangle_extra_suffix() {
-        // From alexcrichton/rustc-demangle#27:
+        // From rust-lang/rustc-demangle#27:
         t_nohash!(
             "_RNvNtNtNtNtCs92dm3009vxr_4rand4rngs7adapter9reseeding4fork23FORK_HANDLER_REGISTERED.0.0",
             "rand::rngs::adapter::reseeding::fork::FORK_HANDLER_REGISTERED.0.0"
