@@ -169,14 +169,20 @@ fn demangle_line(line: &str, include_hash: bool) -> std::borrow::Cow<str> {
             .unwrap_or(line.len());
 
         let mangled = &line[head..match_end];
-        let demangled = if include_hash {
-            format!("{}", demangle(mangled))
+        if let Ok(demangled) = try_demangle(mangled) {
+            let demangled = if include_hash {
+                format!("{}", demangled)
+            } else {
+                format!("{:#}", demangled)
+            };
+            line.to_mut().replace_range(head..match_end, &demangled);
+            // Start again after the replacement.
+            head = head + demangled.len();
         } else {
-            format!("{:#}", demangle(mangled))
-        };
-        line.to_mut().replace_range(head..match_end, &demangled);
-        // Start again after the replacement.
-        head = head + demangled.len();
+            // Skip over the full symbol. We don't try to find a partial Rust symbol in the wider
+            // matched text today.
+            head = head + mangled.len();
+        }
     }
 }
 
