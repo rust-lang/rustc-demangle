@@ -14,6 +14,7 @@ jobs:
       run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
     - run: cargo build --all
     - run: cargo test --all
+    - run: cargo build --features std
 
   fuzz_targets:
     name: Fuzz Targets
@@ -23,7 +24,7 @@ jobs:
     # Note that building with fuzzers requires nightly since it uses unstable
     # flags to rustc.
     - run: rustup update nightly && rustup default nightly
-    - run: cargo install cargo-fuzz --vers "^0.10"
+    - run: cargo install cargo-fuzz --vers "^0.11"
     - run: cargo fuzz build --dev
 
   rustfmt:

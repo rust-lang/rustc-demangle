@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-rustc-demangle = { path = '..' }
+rustc-demangle = { path = '..', features = ["std"] }
 
 [[bin]]
 name = "demangle"

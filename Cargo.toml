@@ -1,6 +1,6 @@
 [package]
 name = "rustc-demangle"
-version = "0.1.21"
+version = "0.1.22"
 authors = ["Alex Crichton <alex@alexcrichton.com>"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
@@ -20,6 +20,11 @@ compiler_builtins = { version = '0.1.2', optional = true }
 
 [features]
 rustc-dep-of-std = ['core', 'compiler_builtins']
+std = []
 
 [profile.release]
 lto = true
+
+[package.metadata.docs.rs]
+features = ["std"]
+rustdoc-args = ["--cfg", "docsrs"]

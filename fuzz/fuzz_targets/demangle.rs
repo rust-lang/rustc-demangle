@@ -11,4 +11,17 @@ fuzz_target!(|data: &str| {
     if let Ok(sym) = rustc_demangle::try_demangle(data) {
         drop(write!(s, "{}", sym));
     }
+
+    let mut output = Vec::new();
+    drop(rustc_demangle::demangle_stream(
+        &mut s.as_bytes(),
+        &mut output,
+        true,
+    ));
+    output.clear();
+    drop(rustc_demangle::demangle_stream(
+        &mut s.as_bytes(),
+        &mut output,
+        false,
+    ));
 });
