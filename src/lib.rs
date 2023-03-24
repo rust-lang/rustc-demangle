@@ -146,19 +146,24 @@ pub fn demangle(mut s: &str) -> Demangle {
 }
 
 #[cfg(feature = "std")]
-fn demangle_line(line: &str, include_hash: bool) -> std::borrow::Cow<str> {
-    let mut line = std::borrow::Cow::Borrowed(line);
+fn demangle_line(
+    line: &str,
+    output: &mut impl std::io::Write,
+    include_hash: bool,
+) -> std::io::Result<()> {
     let mut head = 0;
-    loop {
+    while head < line.len() {
         // Move to the next potential match
-        head = match (line[head..].find("_ZN"), line[head..].find("_R")) {
+        let next_head = match (line[head..].find("_ZN"), line[head..].find("_R")) {
             (Some(idx), None) | (None, Some(idx)) => head + idx,
             (Some(idx1), Some(idx2)) => head + idx1.min(idx2),
             (None, None) => {
-                // No more matches, we can return our line.
-                return line;
+                // No more matches...
+                line.len()
             }
         };
+        output.write_all(line[head..next_head].as_bytes())?;
+        head = next_head;
         // Find the non-matching character.
         //
         // If we do not find a character, then until the end of the line is the
@@ -169,29 +174,26 @@ fn demangle_line(line: &str, include_hash: bool) -> std::borrow::Cow<str> {
             .unwrap_or(line.len());
 
         let mangled = &line[head..match_end];
+        head = head + mangled.len();
         if let Ok(demangled) = try_demangle(mangled) {
-            let demangled = if include_hash {
-                format!("{}", demangled)
+            if include_hash {
+                write!(output, "{}", demangled)?;
             } else {
-                format!("{:#}", demangled)
-            };
-            line.to_mut().replace_range(head..match_end, &demangled);
-            // Start again after the replacement.
-            head = head + demangled.len();
+                write!(output, "{:#}", demangled)?;
+            }
         } else {
-            // Skip over the full symbol. We don't try to find a partial Rust symbol in the wider
-            // matched text today.
-            head = head + mangled.len();
+            output.write_all(mangled.as_bytes())?;
         }
     }
+    Ok(())
 }
 
 /// Process a stream of data from `input` into the provided `output`, demangling any symbols found
 /// within.
 ///
-/// This currently is implemented by buffering each line of input in memory, but that may be
-/// changed in the future. Symbols never cross line boundaries so this is just an implementation
-/// detail.
+/// Note that the underlying implementation will perform many relatively small writes to the
+/// output. If the output is expensive to write to (e.g., requires syscalls), consider using
+/// `std::io::BufWriter`.
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub fn demangle_stream<R: std::io::BufRead, W: std::io::Write>(
@@ -206,8 +208,7 @@ pub fn demangle_stream<R: std::io::BufRead, W: std::io::Write>(
     // trailing data during demangling. In the future we might directly stream to the output but at
     // least right now that seems to be less efficient.
     while input.read_line(&mut buf)? > 0 {
-        let demangled_line = demangle_line(&buf, include_hash);
-        output.write_all(demangled_line.as_bytes())?;
+        demangle_line(&buf, output, include_hash)?;
         buf.clear();
     }
     Ok(())
@@ -560,11 +561,18 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "std")]
+    fn demangle_str(input: &str) -> String {
+        let mut output = Vec::new();
+        super::demangle_line(input, &mut output, false);
+        String::from_utf8(output).unwrap()
+    }
+
     #[test]
     #[cfg(feature = "std")]
     fn find_multiple() {
         assert_eq!(
-            super::demangle_line("_ZN3fooE.llvm moocow _ZN3fooE.llvm", false),
+            demangle_str("_ZN3fooE.llvm moocow _ZN3fooE.llvm"),
             "foo.llvm moocow foo.llvm"
         );
     }
@@ -573,7 +581,7 @@ mod tests {
     #[cfg(feature = "std")]
     fn interleaved_new_legacy() {
         assert_eq!(
-            super::demangle_line("_ZN3fooE.llvm moocow _RNvMNtNtNtNtCs8a2262Dv4r_3mio3sys4unix8selector5epollNtB2_8Selector6select _ZN3fooE.llvm", false),
+            demangle_str("_ZN3fooE.llvm moocow _RNvMNtNtNtNtCs8a2262Dv4r_3mio3sys4unix8selector5epollNtB2_8Selector6select _ZN3fooE.llvm"),
             "foo.llvm moocow <mio::sys::unix::selector::epoll::Selector>::select foo.llvm"
         );
     }
