@@ -406,6 +406,10 @@ mod tests {
         t!("_ZN4testE", "test");
         t_err!("_ZN4test");
         t!("_ZN4test1a2bcE", "test::a::bc");
+        t_err!("🐇");
+        t!("_ZN4🐇E", "🐇");
+        t_err!("_ZN4🐇");
+        t!("_ZN4🐇1a2bcE", "🐇::a::bc");
     }
 
     #[test]

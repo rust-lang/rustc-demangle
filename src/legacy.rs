@@ -83,8 +83,8 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
         // `c` already contains the first character of this identifier, skip it and
         // all the other characters of this identifier, to reach the next element.
         while len > 0 {
-            c = chars.next().ok_or(())?;
             len = len.checked_sub(c.len_utf8()).ok_or(())?;
+            c = chars.next().ok_or(())?;
         }
 
         elements += 1;
