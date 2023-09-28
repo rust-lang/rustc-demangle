@@ -606,6 +606,15 @@ mod tests {
 
     #[test]
     #[cfg(feature = "std")]
+    fn find_multiple_emoji() {
+        assert_eq!(
+            demangle_str("_ZN4🐇E.llvm moocow _ZN4🐇E.llvm"),
+            "🐇.llvm moocow 🐇.llvm"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
     fn interleaved_new_legacy() {
         assert_eq!(
             demangle_str("_ZN3fooE.llvm moocow _RNvMNtNtNtNtCs8a2262Dv4r_3mio3sys4unix8selector5epollNtB2_8Selector6select _ZN3fooE.llvm"),
