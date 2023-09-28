@@ -63,11 +63,6 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
         return Err(());
     };
 
-    // only work with ascii text
-    if inner.bytes().any(|c| c & 0x80 != 0) {
-        return Err(());
-    }
-
     let mut elements = 0;
     let mut chars = inner.chars();
     let mut c = chars.next().ok_or(())?;
@@ -87,8 +82,9 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
 
         // `c` already contains the first character of this identifier, skip it and
         // all the other characters of this identifier, to reach the next element.
-        for _ in 0..len {
+        while len > 0 {
             c = chars.next().ok_or(())?;
+            len = len.checked_sub(c.len_utf8()).ok_or(())?;
         }
 
         elements += 1;
