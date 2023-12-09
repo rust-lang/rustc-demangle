@@ -1279,12 +1279,17 @@ mod tests {
     #[test]
     fn demangle_crate_with_leading_digit() {
         t_nohash!("_RNvC6_123foo3bar", "123foo::bar");
+        t_nohash!("__RNvC6_123foo3bar", "123foo::bar");
     }
 
     #[test]
     fn demangle_utf8_idents() {
         t_nohash!(
             "_RNqCs4fqI2P2rA04_11utf8_identsu30____7hkackfecea1cbdathfdh9hlq6y",
+            "utf8_idents::საჭმელად_გემრიელი_სადილი"
+        );
+        t_nohash!(
+            "__RNqCs4fqI2P2rA04_11utf8_identsu30____7hkackfecea1cbdathfdh9hlq6y",
             "utf8_idents::საჭმელად_გემრიელი_სადილი"
         );
     }
@@ -1299,12 +1304,24 @@ mod tests {
             "_RNCINkXs25_NgCsbmNqQUJIY6D_4core5sliceINyB9_4IterhENuNgNoBb_4iter8iterator8Iterator9rpositionNCNgNpB9_6memchr7memrchrs_0E0Bb_",
             "<core::slice::Iter<u8> as core::iter::iterator::Iterator>::rposition::<core::slice::memchr::memrchr::{closure#1}>::{closure#0}"
         );
+        t_nohash!(
+            "__RNCNCNgCs6DXkGYLi8lr_2cc5spawn00B5_",
+            "cc::spawn::{closure#0}::{closure#0}"
+        );
+        t_nohash!(
+            "__RNCINkXs25_NgCsbmNqQUJIY6D_4core5sliceINyB9_4IterhENuNgNoBb_4iter8iterator8Iterator9rpositionNCNgNpB9_6memchr7memrchrs_0E0Bb_",
+            "<core::slice::Iter<u8> as core::iter::iterator::Iterator>::rposition::<core::slice::memchr::memrchr::{closure#1}>::{closure#0}"
+        );
     }
 
     #[test]
     fn demangle_dyn_trait() {
         t_nohash!(
             "_RINbNbCskIICzLVDPPb_5alloc5alloc8box_freeDINbNiB4_5boxed5FnBoxuEp6OutputuEL_ECs1iopQbuBiw2_3std",
+            "alloc::alloc::box_free::<dyn alloc::boxed::FnBox<(), Output = ()>>"
+        );
+        t_nohash!(
+            "__RINbNbCskIICzLVDPPb_5alloc5alloc8box_freeDINbNiB4_5boxed5FnBoxuEp6OutputuEL_ECs1iopQbuBiw2_3std",
             "alloc::alloc::box_free::<dyn alloc::boxed::FnBox<(), Output = ()>>"
         );
     }
