@@ -1,0 +1,1 @@
+window.ALL_CRATES = ["rustc_demangle"];
