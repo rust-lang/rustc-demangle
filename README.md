@@ -30,6 +30,9 @@ You'll then find `target/release/librustc_demangle.a` and
 platform). These objects implement the interface specified in
 `crates/capi/include/rustc_demangle.h`.
 
+Alternatively, there's a pure C99 implementation of Rust demangling here: 
+[rust-demangle.c](https://github.com/LykenSol/rust-demangle.c). 
+
 # License
 
 This project is licensed under either of
