@@ -11,9 +11,16 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 rustc-demangle = { path = '..', features = ["std"] }
+rustc-demangle-native-c = { path = '../crates/native-c' }
 
 [[bin]]
 name = "demangle"
 path = "fuzz_targets/demangle.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "native_c"
+path = "fuzz_targets/native_c.rs"
 test = false
 doc = false
