@@ -138,9 +138,12 @@ NODISCARD demangle_status rust_demangle_v0_demangle(const char *s, size_t s_len,
         inner = s+2;
         inner_len = s_len - 2;
     } else if (s_len >= 1 && !strncmp(s, "R", strlen("R"))) {
+        // On Windows, dbghelp strips leading underscores, so we accept "R..."
+        // form too.
         inner = s+1;
         inner_len = s_len - 1;
     } else if (s_len >= 3 && !strncmp(s, "__R", strlen("__R"))) {
+        // On OSX, symbols are prefixed with an extra _
         inner = s+3;
         inner_len = s_len - 3;
     } else {
@@ -1682,9 +1685,12 @@ NODISCARD demangle_status rust_demangle_legacy_demangle(const char *s, size_t s_
         inner = s + 3;
         inner_len = s_len - 3;
     } else if (s_len >= 2 && !strncmp(s, "ZN", 2)) {
+        // On Windows, dbghelp strips leading underscores, so we accept "ZN...E"
+        // form too.
         inner = s + 2;
         inner_len = s_len - 2;
     } else if (s_len >= 4 && !strncmp(s, "__ZN", 4)) {
+        // On OSX, symbols are prefixed with an extra _
         inner = s + 4;
         inner_len = s_len - 4;
     } else {
