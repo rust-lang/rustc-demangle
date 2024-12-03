@@ -23,7 +23,7 @@ rustc-dep-of-std = ['core', 'compiler_builtins']
 std = []
 
 [profile.release]
-lto = true
+#lto = true
 
 [package.metadata.docs.rs]
 features = ["std"]
