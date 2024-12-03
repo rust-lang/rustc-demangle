@@ -14,3 +14,12 @@ crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 rustc-demangle = { version = "0.1.16", path = "../.." }
+
+[features]
+capi = []
+
+[package.metadata.capi.header]
+generation = false
+
+[package.metadata.capi.install.include]
+asset = [{ from="include/rustc_demangle.h" }]
