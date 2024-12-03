@@ -59,7 +59,8 @@ fn smoke_test() {
                     buf.as_mut_ptr().cast(),
                     output_len,
                     alternate,
-                ) != 0 {
+                ) != 0
+                {
                     continue; // buffer is not big enough
                 }
                 let output = CStr::from_bytes_until_nul(&buf[..])
