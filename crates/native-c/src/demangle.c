@@ -126,7 +126,7 @@ static NODISCARD demangle_status try_parse_path(struct parser *parser) {
     return printer.status;
 }
 
-NODISCARD demangle_status rust_demangle_v0_demangle(const char *s, size_t s_len, struct demangle_v0 *res, const char **rest) {
+NODISCARD static demangle_status rust_demangle_v0_demangle(const char *s, size_t s_len, struct demangle_v0 *res, const char **rest) {
     if (s_len > strlen(s)) {
         // s_len only exists to shorten the string, this is not a buffer API
         return DemangleInvalid;
@@ -1672,7 +1672,7 @@ static NODISCARD overflow_status printer_print_type(struct printer *printer) {
     return OverflowOk;
 }
 
-NODISCARD demangle_status rust_demangle_legacy_demangle(const char *s, size_t s_len, struct demangle_legacy *res, const char **rest)
+NODISCARD static demangle_status rust_demangle_legacy_demangle(const char *s, size_t s_len, struct demangle_legacy *res, const char **rest)
 {
     if (s_len > strlen(s)) {
         // s_len only exists to shorten the string, this is not a buffer API

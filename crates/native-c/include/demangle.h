@@ -1,6 +1,10 @@
 #ifndef _H_DEMANGLE_V0_H
 #define _H_DEMANGLE_V0_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stddef.h>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -68,5 +72,9 @@ DEMANGLE_NODISCARD overflow_status rust_demangle_display_demangle(struct demangl
 bool rust_demangle_is_known(struct demangle *res);
 
 #undef DEMANGLE_NODISCARD
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
