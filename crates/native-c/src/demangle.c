@@ -181,7 +181,7 @@ NODISCARD static demangle_status rust_demangle_v0_demangle(const char *s, size_t
 }
 
 // This might require `len` to be up to 3 characters bigger than the real output len in case of utf-8
-NODISCARD overflow_status rust_demangle_v0_display_demangle(struct demangle_v0 res, char *out, size_t len, bool alternate) {
+NODISCARD static overflow_status rust_demangle_v0_display_demangle(struct demangle_v0 res, char *out, size_t len, bool alternate) {
     struct printer printer = {
         DemangleOk,
         {
@@ -1762,7 +1762,7 @@ static bool is_rust_hash(const char *s, size_t len) {
     return true;
 }
 
-NODISCARD overflow_status rust_demangle_legacy_display_demangle(struct demangle_legacy res, char *out, size_t len, bool alternate)
+NODISCARD static overflow_status rust_demangle_legacy_display_demangle(struct demangle_legacy res, char *out, size_t len, bool alternate)
 {
     struct printer printer = {
         // not actually using the parser part of the printer, just keeping it to share the format functions
