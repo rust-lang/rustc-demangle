@@ -1,0 +1,7 @@
+A portable native C demangler, which should mostly have byte-for-byte identical outputs to the Rust one, including in error cases.
+
+This code is intended to be safe to run on untrusted inputs and has been fuzzed, but only it's author has tried to find security issues in it so a security review is probably wise before using it as a serious security barrier.
+
+The only difference is that since it's hard to include up-to-date unicode tables in portable C code, strings in constants (do you know that feature exists?) have all non-ASCII characters escaped (as `\u{ABCD}`) rather than having only non-printable characters escaped. Unicode in identifiers is still translated as-is, allowing non-printable characters just like rustc. If you care, the code intentionally includes `unicode_isprint` and `unicode_isgraphemextend` that can be replaced with actual Unicode tables.
+
+This has a Cargo.toml to make it easy to test, but people whose build systems can use Rust are expected to use the `rustc-demangle-capi` crate which uses the Rust `rustc-demangle` implementation instead. Since the crate is intended only for users with weird build systems, there is no build system provided.
