@@ -1707,10 +1707,8 @@ NODISCARD static demangle_status rust_demangle_legacy_demangle(const char *s, si
     if (chars_len == 0) {
         return DemangleInvalid;
     }
-    char c = *chars++;
-    chars_len--;
-
-    while (c != 'E') {
+    char c;
+    while ((c = *chars) != 'E') {
         // Decode an identifier element's length
         if (c < '0' || c > '9') {
             return DemangleInvalid;
@@ -1726,25 +1724,25 @@ NODISCARD static demangle_status rust_demangle_legacy_demangle(const char *s, si
                 return DemangleInvalid;
             }
             len += d;
+
+            chars++;
+            chars_len--;
             if (chars_len == 0) {
                 return DemangleInvalid;
             }
-            c = *chars++;
-            chars_len--;
+            c = *chars;
         }
 
         // Advance by the length
-        for (size_t i = 0; i < len; i++) {
-            if (chars_len == 0) {
-                return DemangleInvalid;
-            }
-            c = *chars++;
-            chars_len--;
+        if (chars_len <= len) {
+            return DemangleInvalid;
         }
+        chars += len;
+        chars_len -= len;
         elements++;
     }
     *res = (struct demangle_legacy) { inner, inner_len, elements };
-    *rest = chars;
+    *rest = chars + 1;
     return DemangleOk;
 }
 
