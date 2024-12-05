@@ -1,6 +1,8 @@
 // Code for demangling Rust symbols. This code is mostly
 // a line-by-line translation of the Rust code in `rustc-demangle`.
 
+// you can find the latest version of this code in https://github.com/rust-lang/rustc-demangle
+
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
