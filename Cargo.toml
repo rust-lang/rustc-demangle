@@ -10,6 +10,7 @@ documentation = "https://docs.rs/rustc-demangle"
 description = """
 Rust compiler symbol demangling.
 """
+edition = "2015"
 
 [workspace]
 members = ["crates/capi", "fuzz"]
