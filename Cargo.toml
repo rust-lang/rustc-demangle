@@ -16,11 +16,14 @@ members = ["crates/capi", "fuzz"]
 
 [dependencies]
 core = { version = '1.0.0', optional = true, package = 'rustc-std-workspace-core' }
-compiler_builtins = { version = '0.1.2', optional = true }
 
 [features]
-rustc-dep-of-std = ['core', 'compiler_builtins']
+rustc-dep-of-std = ['core']
 std = []
+# Deprecated: `compiler_builtins` used to be a dependency and was enabled by
+# some downstream users, but it is no longer needed. This feature should be
+# removed in a future release.
+compiler_builtins = []
 
 [profile.release]
 #lto = true
