@@ -1018,6 +1018,11 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
             b'B' => {
                 self.print_backref(Self::print_type)?;
             }
+            b'W' => {
+                self.print_type()?;
+                self.print(" is ")?;
+                self.print_pat()?;
+            }
             _ => {
                 // Go back to the tag, so `print_path` also sees it.
                 let _ = self.parser.as_mut().map(|p| p.next -= 1);
@@ -1074,6 +1079,27 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 
         if open {
             self.print(">")?;
+        }
+
+        Ok(())
+    }
+
+    fn print_pat(&mut self) -> fmt::Result {
+        let tag = parse!(self, next);
+
+        match tag {
+            b'R' => {
+                self.print_const(false)?;
+                self.print("..=")?;
+                self.print_const(false)?;
+            }
+            b'O' => {
+                parse!(self, push_depth);
+                self.print_pat()?;
+                self.pop_depth();
+            }
+            b'N' => self.print("!null")?,
+            _ => invalid!(self),
         }
 
         Ok(())
