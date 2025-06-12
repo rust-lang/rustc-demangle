@@ -26,6 +26,9 @@
 #![no_std]
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![expect(elided_lifetimes_in_paths)]
+#![expect(explicit_outlives_requirements)]
+#![expect(unreachable_pub)]
 
 #[cfg(any(test, feature = "std"))]
 #[macro_use]
