@@ -220,6 +220,15 @@ pub struct TryDemangleError {
     _priv: (),
 }
 
+impl fmt::Display for TryDemangleError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TryDemangleError")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for TryDemangleError {}
+
 /// The same as `demangle`, except return an `Err` if the string does not appear
 /// to be a Rust symbol, rather than "demangling" the given string as a no-op.
 ///
