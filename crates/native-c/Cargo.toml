@@ -1,5 +1,6 @@
 [package]
 name = "rustc-demangle-native-c"
+edition = "2015"
 version = "0.1.0"
 authors = ["automatically generated"]
 description = """
