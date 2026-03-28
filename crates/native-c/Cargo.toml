@@ -1,6 +1,8 @@
 [package]
 name = "rustc-demangle-native-c"
+edition = "2015"
 version = "0.1.0"
+rust-version = "1.77.0"
 authors = ["automatically generated"]
 description = """
 Native C version of the rustc_demangle crate

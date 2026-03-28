@@ -89,7 +89,7 @@ enum DemangleStyle<'a> {
 /// assert_eq!(demangle("_ZN3foo3barE").to_string(), "foo::bar");
 /// assert_eq!(demangle("foo").to_string(), "foo");
 /// ```
-pub fn demangle(mut s: &str) -> Demangle {
+pub fn demangle(mut s: &str) -> Demangle<'_> {
     // During ThinLTO LLVM may import and rename internal symbols, so strip out
     // those endings first as they're one of the last manglings applied to symbol
     // names.
@@ -220,6 +220,15 @@ pub struct TryDemangleError {
     _priv: (),
 }
 
+impl fmt::Display for TryDemangleError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TryDemangleError")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for TryDemangleError {}
+
 /// The same as `demangle`, except return an `Err` if the string does not appear
 /// to be a Rust symbol, rather than "demangling" the given string as a no-op.
 ///
@@ -234,7 +243,7 @@ pub struct TryDemangleError {
 /// // While `demangle` will just pass the non-symbol through as a no-op.
 /// assert_eq!(rustc_demangle::demangle(not_a_rust_symbol).as_str(), not_a_rust_symbol);
 /// ```
-pub fn try_demangle(s: &str) -> Result<Demangle, TryDemangleError> {
+pub fn try_demangle(s: &str) -> Result<Demangle<'_>, TryDemangleError> {
     let sym = demangle(s);
     if sym.style.is_some() {
         Ok(sym)
