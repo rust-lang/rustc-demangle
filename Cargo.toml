@@ -2,6 +2,7 @@
 name = "rustc-demangle"
 version = "0.1.27"
 edition = "2015"
+rust-version = "1.60.0"
 authors = ["Alex Crichton <alex@alexcrichton.com>"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
