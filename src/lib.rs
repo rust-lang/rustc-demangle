@@ -74,6 +74,38 @@ enum DemangleStyle<'a> {
     V0(v0::Demangle<'a>),
 }
 
+fn demangle_common(s: &str) -> Option<(DemangleStyle, &str)> {
+    // During ThinLTO LLVM may import and rename internal symbols, so strip out
+    // those endings first as they're one of the last manglings applied to symbol
+    // names.
+    let llvm = ".llvm.";
+    let mut thinlto_stripped = s;
+    if let Some(i) = s.find(llvm) {
+        let candidate = &s[i + llvm.len()..];
+        let all_hex = candidate.chars().all(|c| match c {
+            'A'..='F' | '0'..='9' | '@' => true,
+            _ => false,
+        });
+
+        if all_hex {
+            thinlto_stripped = &s[..i];
+        }
+    }
+
+    match legacy::demangle(thinlto_stripped) {
+        Ok((d, suffix)) => Some((DemangleStyle::Legacy(d), suffix)),
+        Err(()) => match v0::demangle(thinlto_stripped) {
+            Ok((d, suffix)) => Some((DemangleStyle::V0(d), suffix)),
+            // FIXME(eddyb) would it make sense to treat an unknown-validity
+            // symbol (e.g. one that errored with `RecursedTooDeep`) as
+            // v0-mangled, and have the error show up in the demangling?
+            // (that error already gets past this initial check, and therefore
+            // will show up in the demangling, if hidden behind a backref)
+            Err(v0::ParseError::Invalid) | Err(v0::ParseError::RecursedTooDeep) => None,
+        },
+    }
+}
+
 /// De-mangles a Rust symbol into a more readable version
 ///
 /// This function will take a **mangled** symbol and return a value. When printed,
@@ -89,100 +121,87 @@ enum DemangleStyle<'a> {
 /// assert_eq!(demangle("_ZN3foo3barE").to_string(), "foo::bar");
 /// assert_eq!(demangle("foo").to_string(), "foo");
 /// ```
-pub fn demangle(mut s: &str) -> Demangle {
-    // During ThinLTO LLVM may import and rename internal symbols, so strip out
-    // those endings first as they're one of the last manglings applied to symbol
-    // names.
-    let llvm = ".llvm.";
-    if let Some(i) = s.find(llvm) {
-        let candidate = &s[i + llvm.len()..];
-        let all_hex = candidate.chars().all(|c| match c {
-            'A'..='F' | '0'..='9' | '@' => true,
-            _ => false,
-        });
-
-        if all_hex {
-            s = &s[..i];
+pub fn demangle(s: &str) -> Demangle {
+    if let Some((style, remainder)) = demangle_common(s) {
+        // Output like LLVM IR adds extra period-delimited words. See if
+        // we are in that case and save the trailing words if so.
+        if remainder.is_empty() || (remainder.starts_with('.') && is_llvm_suffix_like(remainder)) {
+            return Demangle {
+                style: Some(style),
+                original: s,
+                suffix: remainder,
+            };
         }
     }
 
-    let mut suffix = "";
-    let mut style = match legacy::demangle(s) {
-        Ok((d, s)) => {
-            suffix = s;
-            Some(DemangleStyle::Legacy(d))
-        }
-        Err(()) => match v0::demangle(s) {
-            Ok((d, s)) => {
-                suffix = s;
-                Some(DemangleStyle::V0(d))
-            }
-            // FIXME(eddyb) would it make sense to treat an unknown-validity
-            // symbol (e.g. one that errored with `RecursedTooDeep`) as
-            // v0-mangled, and have the error show up in the demangling?
-            // (that error already gets past this initial check, and therefore
-            // will show up in the demangling, if hidden behind a backref)
-            Err(v0::ParseError::Invalid) | Err(v0::ParseError::RecursedTooDeep) => None,
-        },
-    };
-
-    // Output like LLVM IR adds extra period-delimited words. See if
-    // we are in that case and save the trailing words if so.
-    if !suffix.is_empty() {
-        if suffix.starts_with('.') && is_symbol_like(suffix) {
-            // Keep the suffix.
-        } else {
-            // Reset the suffix and invalidate the demangling.
-            suffix = "";
-            style = None;
-        }
-    }
-
-    Demangle {
-        style,
+    return Demangle {
+        style: None,
         original: s,
-        suffix,
+        suffix: "",
+    };
+}
+
+#[cfg(feature = "std")]
+fn demangle_partial(s: &str) -> (Demangle, &str) {
+    if let Some((style, remainder)) = demangle_common(s) {
+        // Note: suffix is ALWAYS empty because we do not compute the
+        // LLVM compatibility (nor do we care)
+        return (
+            Demangle {
+                style: Some(style),
+                original: s,
+                suffix: "",
+            },
+            remainder,
+        );
     }
+
+    (
+        Demangle {
+            style: None,
+            original: s,
+            suffix: "",
+        },
+        s,
+    )
 }
 
 #[cfg(feature = "std")]
 fn demangle_line(
-    line: &str,
+    mut line: &str,
     output: &mut impl std::io::Write,
     include_hash: bool,
 ) -> std::io::Result<()> {
-    let mut head = 0;
-    while head < line.len() {
+    loop {
         // Move to the next potential match
-        let next_head = match (line[head..].find("_ZN"), line[head..].find("_R")) {
-            (Some(idx), None) | (None, Some(idx)) => head + idx,
-            (Some(idx1), Some(idx2)) => head + idx1.min(idx2),
+        let next_head = match (line.find("_ZN"), line.find("_R")) {
+            (Some(idx), None) | (None, Some(idx)) => idx,
+            (Some(idx1), Some(idx2)) => idx1.min(idx2),
             (None, None) => {
                 // No more matches...
                 line.len()
             }
         };
-        output.write_all(line[head..next_head].as_bytes())?;
-        head = next_head;
-        // Find the non-matching character.
-        //
-        // If we do not find a character, then until the end of the line is the
-        // thing to demangle.
-        let match_end = line[head..]
-            .find(|ch: char| !(ch == '$' || ch == '.' || ch == '_' || ch.is_ascii_alphanumeric()))
-            .map(|idx| head + idx)
-            .unwrap_or(line.len());
+        output.write_all(line[..next_head].as_bytes())?;
+        line = &line[next_head..];
 
-        let mangled = &line[head..match_end];
-        head = head + mangled.len();
-        if let Ok(demangled) = try_demangle(mangled) {
+        if line.is_empty() {
+            break;
+        }
+
+        let (demangled, remainder) = demangle_partial(line);
+        line = remainder;
+
+        if demangled.style.is_some() {
             if include_hash {
                 write!(output, "{}", demangled)?;
             } else {
                 write!(output, "{:#}", demangled)?;
             }
         } else {
-            output.write_all(mangled.as_bytes())?;
+            // there are maybe valid symbols inside this fake one
+            output.write_all(&line.as_bytes()[..1])?;
+            line = &line[1..];
         }
     }
     Ok(())
@@ -250,7 +269,7 @@ impl<'a> Demangle<'a> {
     }
 }
 
-fn is_symbol_like(s: &str) -> bool {
+fn is_llvm_suffix_like(s: &str) -> bool {
     s.chars().all(|c| {
         // Once `char::is_ascii_punctuation` and `char::is_ascii_alphanumeric`
         // have been stable for long enough, use those instead for clarity
@@ -409,6 +428,14 @@ mod tests {
     }
 
     #[test]
+    fn demangle_emoji() {
+        t_err!("🐇");
+        t!("_ZN4🐇E", "🐇");
+        t_err!("_ZN4🐇");
+        t!("_ZN4🐇1a2bcE", "🐇::a::bc");
+    }
+
+    #[test]
     fn demangle_dollars() {
         t!("_ZN4$RP$E", ")");
         t!("_ZN8$RF$testE", "&test");
@@ -564,7 +591,7 @@ mod tests {
     #[cfg(feature = "std")]
     fn demangle_str(input: &str) -> String {
         let mut output = Vec::new();
-        super::demangle_line(input, &mut output, false);
+        super::demangle_line(input, &mut output, false).unwrap();
         String::from_utf8(output).unwrap()
     }
 
@@ -574,6 +601,15 @@ mod tests {
         assert_eq!(
             demangle_str("_ZN3fooE.llvm moocow _ZN3fooE.llvm"),
             "foo.llvm moocow foo.llvm"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn find_multiple_emoji() {
+        assert_eq!(
+            demangle_str("_ZN4🐇E.llvm moocow _ZN4🐇E.llvm"),
+            "🐇.llvm moocow 🐇.llvm"
         );
     }
 
