@@ -46,19 +46,19 @@ pub struct Demangle<'a> {
 // Note that this demangler isn't quite as fancy as it could be. We have lots
 // of other information in our symbols like hashes, version, type information,
 // etc. Additionally, this doesn't handle glue symbols at all.
-pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
+pub fn demangle(s: &str) -> Result<(Demangle<'_>, &str), ()> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
-    let inner = if s.starts_with("_ZN") {
-        &s[3..]
-    } else if s.starts_with("ZN") {
+    let inner = if let Some(s) = s.strip_prefix("_ZN") {
+        s
+    } else if let Some(s) = s.strip_prefix("ZN") {
         // On Windows, dbghelp strips leading underscores, so we accept "ZN...E"
         // form too.
-        &s[2..]
-    } else if s.starts_with("__ZN") {
+        s
+    } else if let Some(s) = s.strip_prefix("__ZN") {
         // On OSX, symbols are prefixed with an extra _
-        &s[4..]
+        s
     } else {
         return Err(());
     };
@@ -69,15 +69,16 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
     }
 
     let mut elements = 0;
-    let mut chars = inner.chars();
+    // we checked, that string is in ascii range
+    let mut chars = inner.bytes();
     let mut c = chars.next().ok_or(())?;
-    while c != 'E' {
+    while c != b'E' {
         // Decode an identifier element's length.
-        if !c.is_digit(10) {
+        if !(c as char).is_digit(10) {
             return Err(());
         }
         let mut len = 0usize;
-        while let Some(d) = c.to_digit(10) {
+        while let Some(d) = (c as char).to_digit(10) {
             len = len
                 .checked_mul(10)
                 .and_then(|len| len.checked_add(d as usize))
@@ -94,21 +95,30 @@ pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
         elements += 1;
     }
 
-    Ok((Demangle { inner, elements }, chars.as_str()))
+    let chars_left = chars.count();
+    Ok((
+        Demangle { inner, elements },
+        &inner[inner.len() - chars_left..],
+    ))
 }
 
 // Rust hashes are hex digits with an `h` prepended.
 fn is_rust_hash(s: &str) -> bool {
-    s.starts_with('h') && s[1..].chars().all(|c| c.is_digit(16))
+    s.starts_with('h') && s[1..].bytes().all(|c| (c as char).is_digit(16))
 }
 
 impl<'a> fmt::Display for Demangle<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Alright, let's do this.
         let mut inner = self.inner;
         for element in 0..self.elements {
             let mut rest = inner;
-            while rest.chars().next().unwrap().is_digit(10) {
+            while rest
+                .bytes()
+                .next()
+                .map(|c| (c as char).is_digit(10))
+                .unwrap_or(false)
+            {
                 rest = &rest[1..];
             }
             let i: usize = inner[..(inner.len() - rest.len())].parse().unwrap();
@@ -116,7 +126,7 @@ impl<'a> fmt::Display for Demangle<'a> {
             rest = &rest[..i];
             // Skip printing the hash if alternate formatting
             // was requested.
-            if f.alternate() && element + 1 == self.elements && is_rust_hash(&rest) {
+            if f.alternate() && element + 1 == self.elements && is_rust_hash(rest) {
                 break;
             }
             if element != 0 {
@@ -127,7 +137,7 @@ impl<'a> fmt::Display for Demangle<'a> {
             }
             loop {
                 if rest.starts_with('.') {
-                    if let Some('.') = rest[1..].chars().next() {
+                    if let Some(b'.') = rest[1..].bytes().next() {
                         f.write_str("::")?;
                         rest = &rest[2..];
                     } else {
@@ -153,10 +163,9 @@ impl<'a> fmt::Display for Demangle<'a> {
                         "C" => ",",
 
                         _ => {
-                            if escape.starts_with('u') {
-                                let digits = &escape[1..];
-                                let all_lower_hex = digits.chars().all(|c| match c {
-                                    '0'..='9' | 'a'..='f' => true,
+                            if let Some(digits) = escape.strip_prefix('u') {
+                                let all_lower_hex = digits.bytes().all(|c| match c {
+                                    b'0'..=b'9' | b'a'..=b'f' => true,
                                     _ => false,
                                 });
                                 let c = u32::from_str_radix(digits, 16)
