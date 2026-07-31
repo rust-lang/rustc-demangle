@@ -906,7 +906,7 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         //   taking an unused letter
         // - splat isn't implemented for legacy mangling
         if self.eat(b'w') {
-            self.print("#[splat] ")?;
+            self.print("#[rustc_splat] ")?;
         }
         let tag = parse!(self, next);
 
@@ -1378,23 +1378,23 @@ mod tests {
     fn demangle_splat() {
         t_nohash!(
             "_RNvMNtCs5CcWRJzwAYz_4core6optionINtB2_6OptionFwTlEEuE6unwrapCsiksvdpJ6Jnj_14splat_mangling",
-            "<core::option::Option<fn(#[splat] (i32,))>>::unwrap"
+            "<core::option::Option<fn(#[rustc_splat] (i32,))>>::unwrap"
         );
         t_nohash!(
             "_RMNvCsiksvdpJ6Jnj_14splat_mangling4mainINtB0_4TypeFwThmEEuE",
-            "<splat_mangling::main::Type<fn(#[splat] (u8, u32))>>"
+            "<splat_mangling::main::Type<fn(#[rustc_splat] (u8, u32))>>"
         );
         t_nohash!(
             "_RMs0_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTThmEEEuE",
-            "<splat_mangling::main::Type<fn(#[splat] ((u8, u32),))>>"
+            "<splat_mangling::main::Type<fn(#[rustc_splat] ((u8, u32),))>>"
         );
         t_nohash!(
             "_RMs2_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypePFwTmaEEuE",
-            "<splat_mangling::main::Type<*const fn(#[splat] (u32, i8))>>"
+            "<splat_mangling::main::Type<*const fn(#[rustc_splat] (u32, i8))>>"
         );
         t_nohash!(
             "_RMs4_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTmaEdEuE",
-            "<splat_mangling::main::Type<fn(#[splat] (u32, i8), f64)>>"
+            "<splat_mangling::main::Type<fn(#[rustc_splat] (u32, i8), f64)>>"
         );
     }
 
