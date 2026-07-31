@@ -904,7 +904,6 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
         // FIXME(splat):
         // - for efficiency we might want to use a letter that can't occur in any type, rather than
         //   taking an unused letter
-        // - splat isn't implemented for legacy mangling
         if self.eat(b'w') {
             self.print("#[rustc_splat] ")?;
         }
@@ -1376,6 +1375,10 @@ mod tests {
 
     #[test]
     fn demangle_splat() {
+        // Mostly taken from rust-lang/rust/tests/ui/splat/splat-mangling.rs
+        // and rust-lang/rust/tests/ui/splat/splat-mangling-issue-158644.rs
+
+        // Single splatted argument
         t_nohash!(
             "_RNvMNtCs5CcWRJzwAYz_4core6optionINtB2_6OptionFwTlEEuE6unwrapCsiksvdpJ6Jnj_14splat_mangling",
             "<core::option::Option<fn(#[rustc_splat] (i32,))>>::unwrap"
@@ -1392,9 +1395,25 @@ mod tests {
             "_RMs2_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypePFwTmaEEuE",
             "<splat_mangling::main::Type<*const fn(#[rustc_splat] (u32, i8))>>"
         );
+        // Leading splatted argument
         t_nohash!(
-            "_RMs4_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTmaEdEuE",
+            "_RMs2_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTmaEdEuE",
             "<splat_mangling::main::Type<fn(#[rustc_splat] (u32, i8), f64)>>"
+        );
+        // Trailing splatted argument
+        t_nohash!(
+            "_RMs6_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeOFmawTdEEuE",
+            "<splat_mangling::main::Type<*mut fn(u32, i8, #[rustc_splat] (f64,))>>"
+        );
+        // Middle splatted argument
+        t_nohash!(
+            "_RMs8_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeRFmwTafjEdEuE",
+            "<splat_mangling::main::Type<&fn(u32, #[rustc_splat] (i8, f32, usize), f64)>>"
+        );
+        // Splat within splat
+        t_nohash!(
+            "_RMs2_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeINtNtCsiksvdpJ6Jnj_5alloc5boxed3BoxFmwTFwuEuaEdEuEE",
+            "<splat_mangling::main::Type<alloc::boxed::Box<fn(u32, #[rustc_splat] (fn(#[rustc_splat] ()), i8), f64)>>>"
         );
     }
 
