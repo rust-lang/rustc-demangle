@@ -389,4 +389,40 @@ mod tests {
             "issue_60925::foo::Foo<issue_60925::llvm::Foo>::foo"
         );
     }
+
+    #[test]
+    fn demangle_splat() {
+        // Mostly taken from rust-lang/rust/tests/ui/splat/splat-mangling.rs
+        // and rust-lang/rust/tests/ui/splat/splat-mangling-issue-158644.rs
+
+        // Single splatted argument
+        t_nohash!(
+            "_ZN14splat_mangling4main69Type$LT$fn$LP$$u23$$u5b$rustc_splat$u5d$$u20$$LP$u8$C$u32$RP$$RP$$GT$17hffffffffffffffffE",
+            "splat_mangling::main::Type<fn(#[rustc_splat] (u8,u32))>"
+        );
+        t_nohash!(
+            "ZN14splat_mangling4main83Type$LT$$BP$const$u20$fn$LP$$u23$$u5b$rustc_splat$u5d$$u20$$LP$u32$C$i8$RP$$RP$$GT$17hffffffffffffffffE",
+            "splat_mangling::main::Type<*const fn(#[rustc_splat] (u32,i8))>"
+        );
+        // Leading splatted argument
+        t_nohash!(
+            "_ZN14splat_mangling4main75Type$LT$fn$LP$$u23$$u5b$rustc_splat$u5d$$u20$$LP$u32$C$i8$RP$$C$f64$RP$$GT$17hffffffffffffffffE",
+            "splat_mangling::main::Type<fn(#[rustc_splat] (u32,i8),f64)>"
+        );
+        // Trailing splatted argument
+        t_nohash!(
+            "_ZN14splat_mangling4main90Type$LT$$BP$mut$u20$fn$LP$u32$C$i8$C$$u23$$u5b$rustc_splat$u5d$$u20$$LP$f64$C$$RP$$RP$$GT$17hffffffffffffffffE",
+            "splat_mangling::main::Type<*mut fn(u32,i8,#[rustc_splat] (f64,))>"
+        );
+        // Middle splatted argument
+        t_nohash!(
+            "_ZN14splat_mangling4main93Type$LT$$RF$fn$LP$u32$C$$u23$$u5b$rustc_splat$u5d$$u20$$LP$i8$C$f32$C$usize$RP$$C$f64$RP$$GT$17hffffffffffffffffE",
+            "splat_mangling::main::Type<&fn(u32,#[rustc_splat] (i8,f32,usize),f64)>"
+        );
+        // Splat within splat
+        t_nohash!(
+            "_ZN14splat_mangling4main152Type$LT$alloc..boxed..Box$LT$fn$LP$u32$C$$u23$$u5b$rustc_splat$u5d$$u20$$LP$fn$LP$$u23$$u5b$rustc_splat$u5d$$u20$$LP$$RP$$RP$$C$i8$RP$$C$f64$RP$$GT$$GT$17hffffffffffffffffE",
+            "splat_mangling::main::Type<alloc::boxed::Box<fn(u32,#[rustc_splat] (fn(#[rustc_splat] ()),i8),f64)>>"
+        );
+    }
 }
