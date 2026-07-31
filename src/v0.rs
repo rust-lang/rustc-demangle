@@ -1616,4 +1616,42 @@ mod tests {
 
         assert_contains!(::demangle(&sym).to_string(), "{recursion limit reached}");
     }
+
+    #[test]
+    fn short_crate_disambiguator_bug() {
+        // Cover 1 & 2 character disambiguators.
+        // A zero value is impossible because the parsing code adds 1 twice.
+        t!("_RNvCs0_5basic4main", "basic[2]::main");
+        t!("_RNvCs1_5basic4main", "basic[3]::main");
+        t!("_RNvCsd_5basic4main", "basic[f]::main");
+        t!("_RNvCse_5basic4main", "basic[10]::main");
+        // This is not the canonical format, but it works
+        t!("_RNvCs0000000000Z_5basic4main", "basic[3f]::main");
+        // Cover 15 and 16 character disambiguators
+        t!(
+            "_RNvCs0ZZZZZZZZZZ_5basic4main",
+            "basic[ba5ca5392cb0401]::main"
+        );
+        t!(
+            "_RNvCs1naolCOL8Qt_5basic4main",
+            "basic[fffffffffffffff]::main"
+        );
+        t!(
+            "_RNvCs1naolCOL8Qu_5basic4main",
+            "basic[1000000000000000]::main"
+        );
+        t!(
+            "_RNvCslYGhA16ahyd_5basic4main",
+            "basic[ffffffffffffffff]::main"
+        );
+        // Real-world test failure, see rust-lang/rust#160050
+        t!(
+            "_RMse_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeINtNtCsmKzDxHvwyd_5alloc5boxed3BoxFmwTFuEuaEdEuEE",
+            "<splat_mangling[d580343ed36ed69b]::main::Type<alloc[4462ec5c505d9a3]::boxed::Box<fn(u32, #[splat] (fn(()), i8), f64)>>>"
+        );
+        t!(
+            "_RMsf_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeINtNtCsmKzDxHvwyd_5alloc5boxed3BoxFmTFuEuaEdEuEE",
+            "<splat_mangling[d580343ed36ed69b]::main::Type<alloc[4462ec5c505d9a3]::boxed::Box<fn(u32, (fn(()), i8), f64)>>>"
+        );
+    }
 }
