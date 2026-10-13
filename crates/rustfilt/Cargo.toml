@@ -1,7 +1,6 @@
 [package]
 name = "rustfilt"
 description = "Demangle Rust symbol names"
-homepage = "https://github.com/rust-lang/rustc-demangle"
 repository = "https://github.com/rust-lang/rustc-demangle"
 version = "0.2.2-alpha.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>", "Nicholas Schlabach <Techcable@techcable.ent>"]
