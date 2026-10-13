@@ -12,7 +12,11 @@ Rust compiler symbol demangling.
 """
 
 [workspace]
-members = ["crates/capi", "fuzz"]
+members = [
+    "crates/capi",
+    "crates/rustfilt",
+    "fuzz"
+]
 
 [dependencies]
 core = { version = '1.0.0', optional = true, package = 'rustc-std-workspace-core' }
