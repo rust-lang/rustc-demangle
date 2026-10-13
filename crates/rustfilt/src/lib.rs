@@ -1,7 +1,6 @@
 #![cfg(test)]
-use super::demangle_stream;
 ///! Tests demangle_stream, based upon the assumption rustc_demangle works properly
-use rustc_demangle::demangle;
+use rustc_demangle::{demangle, demangle_stream};
 
 static MANGLED_NAMES: &'static [&'static str] = &[
     "_ZN55_$LT$$RF$$u27$a$u20$T$u20$as$u20$core..fmt..Display$GT$3fmt17h510ed05e72307174E",
@@ -14,7 +13,6 @@ static MANGLED_NAMES: &'static [&'static str] = &[
     "_ZN84_$LT$core..iter..Map$LT$I$C$$u20$F$GT$$u20$as$u20$core..iter..iterator..Iterator$GT$4next17h98ea4751a6975428E",
     "_ZN51_$LT$serde_json..read..IteratorRead$LT$Iter$GT$$GT$15parse_str_bytes17h8199b7867f1a334fE",
     "_ZN3std11collections4hash3map11RandomState3new4KEYS7__getit5__KEY17h1bc0dbd302b9f01bE",
-
     // RFC2603 v0 mangled names
     "_RNvNtNtCs1234_7mycrate3foo3bar3baz",
     "_RNvNvMCs1234_7mycrateINtCs1234_7mycrate3FoopE3bar4QUUX",

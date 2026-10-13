@@ -30,7 +30,8 @@ std = []
 compiler_builtins = []
 
 [profile.release]
-#lto = true
+# Reduces binary size by 21%
+lto = true
 
 [package.metadata.docs.rs]
 features = ["std"]
