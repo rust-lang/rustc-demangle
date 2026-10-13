@@ -12,7 +12,11 @@ Rust compiler symbol demangling.
 """
 
 [workspace]
-members = ["crates/capi", "fuzz"]
+members = [
+    "crates/capi",
+    "crates/rustfilt",
+    "fuzz"
+]
 
 [dependencies]
 core = { version = '1.0.0', optional = true, package = 'rustc-std-workspace-core' }
@@ -26,7 +30,8 @@ std = []
 compiler_builtins = []
 
 [profile.release]
-#lto = true
+# Reduces binary size by 21%
+lto = true
 
 [package.metadata.docs.rs]
 features = ["std"]
