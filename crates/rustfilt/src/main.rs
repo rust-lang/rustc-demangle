@@ -12,19 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[macro_use]
-extern crate clap;
-extern crate rustc_demangle;
-
 use rustc_demangle::demangle_stream;
 
+use clap::{clap_app, crate_authors, crate_version, value_t};
 use std::fs::File;
-use std::io::{self, stderr, stdin, stdout, BufReader, BufWriter, Write};
+use std::io::{self, BufReader, BufWriter, Write, stderr, stdin, stdout};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::str::FromStr;
-
-mod tests;
 
 enum InputType {
     Stdin,
