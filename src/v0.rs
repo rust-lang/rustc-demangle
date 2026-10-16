@@ -1,6 +1,7 @@
 use core::convert::TryFrom;
 use core::{char, fmt, iter, mem, str};
 
+// As of 2026, our custom formatting code is significantly faster than using `write!`.
 #[allow(unused_macros)]
 macro_rules! write {
     ($($ignored:tt)*) => {
@@ -395,6 +396,41 @@ fn basic_type(tag: u8) -> Option<&'static str> {
     })
 }
 
+/// Wrapper type that ensures disambiguators are formatted correctly.
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct Disambiguator(u64);
+
+impl Disambiguator {
+    /// The zero-fill required for a minimum-length disambiguator ("0" to "f").
+    const MAX_HEX_FILL: &str = "000000000000000";
+
+    /// Creates a new disambiguator from a u64.
+    fn new(disambiguator: u64) -> Self {
+        Self(disambiguator)
+    }
+
+    /// Formats a fixed-length 16 character hex representation of the disambiguator.
+    fn fmt_hex(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Handle the edge case of a zero disambiguator, where the bit width is zero, but the
+        // format is "0" (not the empty string).
+        // This code is about 4% faster than `write!(out, "{:016x}", self.0)`.
+        let hex_len = self.0.bit_width().div_ceil(4).max(1);
+        let fill_len = 16 - (hex_len as usize);
+        out.write_str(&Self::MAX_HEX_FILL[0..fill_len])?;
+        fmt::LowerHex::fmt(&self.0, out)
+    }
+
+    /// Formats a variable-length decimal representation of the disambiguator.
+    fn fmt_decimal(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, out)
+    }
+
+    /// Returns true if the disambiguator is zero.
+    fn is_zero(&self) -> bool {
+        self.0 == 0
+    }
+}
+
 struct Parser<'s> {
     sym: &'s str,
     next: usize,
@@ -489,8 +525,8 @@ impl<'s> Parser<'s> {
         self.integer_62()?.checked_add(1).ok_or(ParseError::Invalid)
     }
 
-    fn disambiguator(&mut self) -> Result<u64, ParseError> {
-        self.opt_integer_62(b's')
+    fn disambiguator(&mut self) -> Result<Disambiguator, ParseError> {
+        self.opt_integer_62(b's').map(Disambiguator::new)
     }
 
     fn namespace(&mut self) -> Result<Option<char>, ParseError> {
@@ -803,9 +839,9 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
 
                 self.print(name)?;
                 if let Some(out) = &mut self.out {
-                    if !out.alternate() && dis != 0 {
+                    if !out.alternate() && !dis.is_zero() {
                         out.write_str("[")?;
-                        fmt::LowerHex::fmt(&dis, out)?;
+                        dis.fmt_hex(out)?;
                         out.write_str("]")?;
                     }
                 }
@@ -841,7 +877,9 @@ impl<'a, 'b, 's> Printer<'a, 'b, 's> {
                             self.print(name)?;
                         }
                         self.print("#")?;
-                        self.print(dis)?;
+                        if let Some(out) = &mut self.out {
+                            dis.fmt_decimal(out)?;
+                        }
                         self.print("}")?;
                     }
 
@@ -1615,5 +1653,46 @@ mod tests {
         sym.push('E');
 
         assert_contains!(::demangle(&sym).to_string(), "{recursion limit reached}");
+    }
+
+    #[test]
+    fn short_crate_disambiguator_bug() {
+        // Cover 1 & 2 character disambiguators.
+        // A zero value is impossible because the parsing code adds 1 twice.
+        t!("_RNvCs0_5basic4main", "basic[0000000000000002]::main");
+        t!("_RNvCs1_5basic4main", "basic[0000000000000003]::main");
+        t!("_RNvCsd_5basic4main", "basic[000000000000000f]::main");
+        t!("_RNvCse_5basic4main", "basic[0000000000000010]::main");
+        // This is not the canonical format, but it works
+        t!(
+            "_RNvCs0000000000Z_5basic4main",
+            "basic[000000000000003f]::main"
+        );
+        // Cover 15 and 16 character disambiguators
+        t!(
+            "_RNvCs0ZZZZZZZZZZ_5basic4main",
+            "basic[0ba5ca5392cb0401]::main"
+        );
+        t!(
+            "_RNvCs1naolCOL8Qt_5basic4main",
+            "basic[0fffffffffffffff]::main"
+        );
+        t!(
+            "_RNvCs1naolCOL8Qu_5basic4main",
+            "basic[1000000000000000]::main"
+        );
+        t!(
+            "_RNvCslYGhA16ahyd_5basic4main",
+            "basic[ffffffffffffffff]::main"
+        );
+        // Real-world test failure, see rust-lang/rust#160050
+        t!(
+            "_RMse_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeINtNtCsmKzDxHvwyd_5alloc5boxed3BoxFmwTFuEuaEdEuEE",
+            "<splat_mangling[d580343ed36ed69b]::main::Type<alloc[04462ec5c505d9a3]::boxed::Box<fn(u32, #[splat] (fn(()), i8), f64)>>>"
+        );
+        t!(
+            "_RMsf_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeINtNtCsmKzDxHvwyd_5alloc5boxed3BoxFmTFuEuaEdEuEE",
+            "<splat_mangling[d580343ed36ed69b]::main::Type<alloc[04462ec5c505d9a3]::boxed::Box<fn(u32, (fn(()), i8), f64)>>>"
+        );
     }
 }
