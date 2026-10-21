@@ -131,6 +131,11 @@ pub fn demangle(mut s: &str) -> Demangle {
     if !suffix.is_empty() {
         if suffix.starts_with('.') && is_symbol_like(suffix) {
             // Keep the suffix.
+        } else if suffix.starts_with('$') {
+            // Some platforms add $-delimited suffixes (eg. `$tlv$init` for TLS on Linux).
+            // Discard those suffixes, as suggested by the specification:
+            // https://doc.rust-lang.org/rustc/symbol-mangling/v0.html#vendor-specific-suffix
+            suffix = "";
         } else {
             // Reset the suffix and invalidate the demangling.
             suffix = "";
@@ -488,6 +493,14 @@ mod tests {
         t_nohash!(
             "_ZN9backtrace3foo17hbb467fcdaea5d79bE.llvm.A5310EB9",
             "backtrace::foo"
+        );
+    }
+
+    #[test]
+    fn demangle_dollar_suffix() {
+        t!(
+            "_RNvNvNvCs7qp2U7fqm6G_7mycrate7EXAMPLE7___getit5___KEY$tlv$init",
+            "mycrate[567e63b0a19c5b38]::EXAMPLE::__getit::__KEY"
         );
     }
 
