@@ -2,7 +2,7 @@
 name = "rustfilt"
 description = "Demangle Rust symbol names"
 repository = "https://github.com/rust-lang/rustc-demangle"
-version = "0.2.2-alpha.0"
+version = "0.2.2"
 authors = ["Ted Mielczarek <ted@mielczarek.org>", "Nicholas Schlabach <Techcable@techcable.ent>"]
 readme = "README.md"
 license = "Apache-2.0"
