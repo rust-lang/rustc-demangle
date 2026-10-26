@@ -12,7 +12,7 @@ edition = "2024"
 rustc-demangle = { version = "0.1.28", features = ["std"] }
 
 [dependencies.clap]
-version = "^2.21.1"
+version = "^4.6.7"
 # Exclude all optional features except wrap_help
 default-features = false
 features = ["wrap_help"]
