@@ -401,7 +401,7 @@ mod tests {
             "splat_mangling::main::Type<fn(#[rustc_splat] (u8,u32))>"
         );
         t_nohash!(
-            "ZN14splat_mangling4main83Type$LT$$BP$const$u20$fn$LP$$u23$$u5b$rustc_splat$u5d$$u20$$LP$u32$C$i8$RP$$RP$$GT$17hffffffffffffffffE",
+            "_ZN14splat_mangling4main83Type$LT$$BP$const$u20$fn$LP$$u23$$u5b$rustc_splat$u5d$$u20$$LP$u32$C$i8$RP$$RP$$GT$17hffffffffffffffffE",
             "splat_mangling::main::Type<*const fn(#[rustc_splat] (u32,i8))>"
         );
         // Leading splatted argument
