@@ -46,7 +46,7 @@ pub struct Demangle<'a> {
 // Note that this demangler isn't quite as fancy as it could be. We have lots
 // of other information in our symbols like hashes, version, type information,
 // etc. Additionally, this doesn't handle glue symbols at all.
-pub fn demangle(s: &str) -> Result<(Demangle, &str), ()> {
+pub fn demangle(s: &str) -> Result<(Demangle<'_>, &str), ()> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.

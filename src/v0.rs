@@ -34,7 +34,7 @@ pub enum ParseError {
 /// This function will take a **mangled** symbol and return a value. When printed,
 /// the de-mangled version will be written. If the symbol does not look like
 /// a mangled symbol, the original value will be written instead.
-pub fn demangle(s: &str) -> Result<(Demangle, &str), ParseError> {
+pub fn demangle(s: &str) -> Result<(Demangle<'_>, &str), ParseError> {
     // First validate the symbol. If it doesn't look like anything we're
     // expecting, we just print it literally. Note that we must handle non-Rust
     // symbols because we could have any function in the backtrace.
