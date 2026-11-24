@@ -406,6 +406,8 @@ mod tests {
         t!("_ZN4testE", "test");
         t_err!("_ZN4test");
         t!("_ZN4test1a2bcE", "test::a::bc");
+        t_err!("_RIIC0pLLpOvR_RIIC0pLLLLppOvRvR]AvR]A?");
+        t_err!("_RYFFFFFFFFFGFF_RC4$estEFFFFGFF_UC4$estEFFGFF_UC4$estEtesC4$estEt___d@FFFtesC4$estEt___d@FFF.FFFFTFFFFFFAmBmB/Y");
     }
 
     #[test]
@@ -415,6 +417,9 @@ mod tests {
         t!("_ZN8$BP$test4foobE", "*test::foob");
         t!("_ZN9$u20$test4foobE", " test::foob");
         t!("_ZN35Bar$LT$$u5b$u32$u3b$$u20$4$u5d$$GT$E", "Bar<[u32; 4]>");
+        t_err!("_ZN4ts$eEt_sd");
+        t_err!("_RC4$estEtesd");
+        t_err!("_ZN4.estEtesd");
     }
 
     #[test]
@@ -584,5 +589,20 @@ mod tests {
             demangle_str("_ZN3fooE.llvm moocow _RNvMNtNtNtNtCs8a2262Dv4r_3mio3sys4unix8selector5epollNtB2_8Selector6select _ZN3fooE.llvm"),
             "foo.llvm moocow <mio::sys::unix::selector::epoll::Selector>::select foo.llvm"
         );
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn test_demangle_with_suffix() {
+        assert_eq!(
+            crate::demangle("RIB_RDB_IIB_RDIB_B_RDB_IIB_RDIRDB_B").suffix,
+            ""
+        );
+        assert_eq!(
+            crate::demangle("RYYFK17o05YYQLF___NQQQYFFFFK17o05YYQQqLfF___NQQQYYFFF9E1o_ZB6").suffix,
+            ""
+        );
+        assert_eq!(crate::demangle("33\nRYFKC*F").suffix, "");
+        assert_eq!(crate::demangle("RYFK0ZFF").suffix, "");
     }
 }
